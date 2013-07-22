@@ -1101,14 +1101,10 @@ static inline void tcp_openreq_init(struct request_sock *req,
 	ireq->loc_port = tcp_hdr(skb)->dest;
 }
 
-/* Compute time elapsed between SYNACK and the ACK completing 3WHS */
-static inline void tcp_synack_rtt_meas(struct sock *sk,
-				       struct request_sock *req)
-{
-	if (tcp_rsk(req)->snt_synack)
-		tcp_valid_rtt_meas(sk,
-		    tcp_time_stamp - tcp_rsk(req)->snt_synack);
-}
+#ifdef CONFIG_MPTCP
+extern void tcp_openreq_init_rwin(struct request_sock *req,
+				  struct sock *sk, struct dst_entry *dst);
+#endif
 
 extern void tcp_enter_memory_pressure(struct sock *sk);
 
