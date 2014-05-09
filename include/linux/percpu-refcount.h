@@ -129,7 +129,7 @@ static inline void percpu_ref_get(struct percpu_ref *ref)
 }
 
 /**
- * percpu_ref_tryget - try to increment a percpu refcount
+ * percpu_ref_tryget_live - try to increment a live percpu refcount
  * @ref: percpu_ref to try-get
  *
  * Increment a percpu refcount unless its count already reached zero.
@@ -137,7 +137,7 @@ static inline void percpu_ref_get(struct percpu_ref *ref)
  *
  * The caller is responsible for ensuring that @ref stays accessible.
  */
-static inline bool percpu_ref_tryget(struct percpu_ref *ref)
+static inline bool percpu_ref_tryget_live(struct percpu_ref *ref)
 {
 	unsigned __percpu *pcpu_count;
 	int ret = false;
