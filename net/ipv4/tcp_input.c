@@ -353,17 +353,12 @@ static void tcp_grow_window(struct sock *sk, const struct sk_buff *skb)
 
 		if (incr) {
 			incr = max_t(int, incr, 2 * skb->len);
-<<<<<<< HEAD
-			tp->rcv_ssthresh = min(tp->rcv_ssthresh + incr,
-					       tp->window_clamp);
-=======
 #ifdef CONFIG_MPTCP
 			meta_tp->rcv_ssthresh = min(meta_tp->rcv_ssthresh + incr,
 					       meta_tp->window_clamp);
 #else
 			tp->rcv_ssthresh += min(room, incr);
 #endif
->>>>>>> 288d0f2be50 (tcp: tcp_grow_window() needs to respect tcp_space())
 			inet_csk(sk)->icsk_ack.quick |= 1;
 		}
 	}
@@ -2194,8 +2189,7 @@ static void tcp_mark_head_lost(struct sock *sk, int packets, int mark_head)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;
-	int cnt, oldcnt;
-	int err;
+	int cnt, oldcnt, lost;
 	unsigned int mss;
 	/* Use SACK to deduce losses of new sequences sent during recovery */
 	const u32 loss_high = tcp_is_sack(tp) ?  tp->snd_nxt : tp->high_seq;
@@ -2235,8 +2229,15 @@ static void tcp_mark_head_lost(struct sock *sk, int packets, int mark_head)
 				break;
 
 			mss = skb_shinfo(skb)->gso_size;
-			err = tcp_fragment(sk, skb, (packets - oldcnt) * mss, mss);
-			if (err < 0)
+			/* If needed, chop off the prefix to mark as lost. */
+			lost = (packets - oldcnt) * mss;
+			
+			if (lost < skb->len &&
+#ifdef CONFIG_MPTCP
+			    tcp_fragment(sk, skb, lost, mss, GFP_ATOMIC) < 0)
+#else
+			    tcp_fragment(sk, skb, lost, mss) < 0)
+#endif
 				break;
 			cnt = packets;
 		}
