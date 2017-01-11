@@ -387,22 +387,6 @@ static inline int kptr_restrict_always_cleanse_pointers(void)
 	return kptr_restrict >= 3;
 }
 
-/*
- * Always cleanse physical addresses (%pa* specifiers)
- */
-static inline int kptr_restrict_cleanse_addresses(void)
-{
-	return kptr_restrict >= 4;
-}
-
-/*
- * Always cleanse resource addresses (%p[rR] specifiers)
- */
-static inline int kptr_restrict_cleanse_resources(void)
-{
-	return kptr_restrict >= 4;
-}
-
 static noinline_for_stack
 char *number(char *buf, char *end, unsigned long long num,
 	     struct printf_spec spec)
@@ -1075,12 +1059,6 @@ char *netdev_feature_string(char *buf, char *end, const u8 *addr,
  *
  * Note: That for kptr_restrict set to 3, %p and %pK have the same
  * meaning.
- *
- * Note: That for kptr_restrict set to 4, %pa will null out the physical
- * address.
- *
- * Note: That for kptr_restrict set to 4, %p[rR] will null out the memory
- * address.
  */
 static noinline_for_stack
 char *pointer(const char *fmt, char *buf, char *end, void *ptr,
@@ -1152,17 +1130,11 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 		}
 		break;
 	case 'a':
-		{
-			unsigned long long addr;
-			if (fmt[1] != 'P' && kptr_restrict_cleanse_addresses())
-				addr = 0;
-			else
-				addr = *((phys_addr_t *)ptr);
-			spec.flags |= SPECIAL | SMALL | ZEROPAD;
-			spec.field_width = sizeof(phys_addr_t) * 2 + 2;
-			spec.base = 16;
-			return number(buf, end, addr, spec);
-		}
+		spec.flags |= SPECIAL | SMALL | ZEROPAD;
+		spec.field_width = sizeof(phys_addr_t) * 2 + 2;
+		spec.base = 16;
+		return number(buf, end,
+			      (unsigned long long) *((phys_addr_t *)ptr), spec);
 	case 'P':
 		/*
 		 * an explicitly whitelisted kernel pointer should never be
@@ -1214,7 +1186,6 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 			}
 		case 2: /* restrict only %pK */
 		case 3: /* restrict all non-extensioned %p and %pK */
-		case 4: /* restrict all non-extensioned %p, %pK, %pa*, %p[rR] */
 		default:
 			ptr = NULL;
 			break;
@@ -1228,7 +1199,7 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 	}
 	spec.base = 16;
 
-	return number(buf, end, (unsigned long long) ptr, spec);
+	return number(buf, end, (unsigned long long) (uintptr_t) ptr, spec);
 }
 
 /*
