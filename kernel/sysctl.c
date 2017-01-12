@@ -797,7 +797,7 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax_sysadmin,
 		.extra1		= &zero,
-		.extra2		= &three,
+		.extra2		= &four,
 	},
 #endif
 #ifdef CONFIG_USB
