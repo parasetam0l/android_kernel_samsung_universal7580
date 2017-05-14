@@ -268,10 +268,7 @@ nfsd4_list_rec_dir(recdir_func *f, struct nfsd_net *nn)
 {
 	const struct cred *original_cred;
 	struct dentry *dir = nn->rec_file->f_path.dentry;
-	struct nfs4_dir_ctx ctx = {
-		.ctx.actor = nfsd4_build_namelist,
-		.names = LIST_HEAD_INIT(ctx.names)
-	};
+	struct nfs4_dir_ctx ctx;
 	int status;
 
 	status = nfs4_save_creds(&original_cred);
