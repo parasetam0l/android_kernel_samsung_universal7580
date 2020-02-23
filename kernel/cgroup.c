@@ -60,6 +60,8 @@
 #include <linux/poll.h>
 #include <linux/flex_array.h> /* used in cgroup_attach_task */
 #include <linux/kthread.h>
+#include <linux/sched/sysctl.h>
+#include <linux/ioprio.h>
 
 #include <linux/atomic.h>
 
@@ -191,6 +193,8 @@ struct cgroup_event {
 	wait_queue_t wait;
 	struct work_struct remove;
 };
+
+unsigned int sysctl_iosched_boost_top_app = 0;
 
 /* The list of hierarchy roots */
 
@@ -2230,6 +2234,26 @@ retry_find_task:
 	}
 
 	ret = cgroup_attach_task(cgrp, tsk, threadgroup);
+
+	if (!memcmp(tsk->comm, "gle.android.gms", sizeof("gle.android.gms")) ||
+	    !memcmp(tsk->comm, ".gms.persistent", sizeof(".gms.persistent")) || 
+	    !memcmp(tsk->comm, "id.gms.unstable", sizeof("id.gms.unstable")) || 
+	    !memcmp(tsk->comm, "ocess.gservices", sizeof("ocess.gservices")) ||
+	    !memcmp(tsk->comm, "roid.apps.turbo", sizeof("roid.apps.turbo")) ||
+	    !memcmp(tsk->comm, "dex2oat", sizeof("dex2oat")) ||
+	    !memcmp(tsk->comm, "android.vending", sizeof("android.vending")))
+	{
+			param.sched_priority = 0;
+			sched_setscheduler(tsk, SCHED_IDLE, &param);
+	}
+
+	if (sysctl_iosched_boost_top_app == 1)
+	{
+		if (!memcmp(cgrp->name->name, "top-app", sizeof("top-app")) && tsk->cred->uid > 10000)
+			set_task_ioprio(tsk, IOPRIO_PRIO_VALUE(1, 6));
+		else
+			set_task_ioprio(tsk, IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, IOPRIO_NORM));
+	}
 
 	threadgroup_unlock(tsk);
 
