@@ -69,10 +69,11 @@ struct attribute_group {
  * for examples..
  */
 
-#define __ATTR(_name,_mode,_show,_store) { \
-	.attr = {.name = __stringify(_name), .mode = _mode },	\
-	.show	= _show,					\
-	.store	= _store,					\
+#define __ATTR(_name, _mode, _show, _store) {				\
+	.attr = {.name = __stringify(_name),				\
+		 .mode = VERIFY_OCTAL_PERMISSIONS(_mode) },		\
+	.show	= _show,						\
+	.store	= _store,						\
 }
 
 #define __ATTR_RO(_name) { \
