@@ -1080,7 +1080,7 @@ void set_task_comm(struct task_struct *tsk, char *buf)
 	if (!memcmp(tsk->comm, "ndroid.systemui", sizeof("ndroid.systemui")))
 	{
 		param.sched_priority = 1;
-		sched_setscheduler(tsk, SCHED_FIFO, &param);
+		sched_setscheduler(tsk, SCHED_RR|SCHED_RESET_ON_FORK, &param);
 		return;
 	}
 }
