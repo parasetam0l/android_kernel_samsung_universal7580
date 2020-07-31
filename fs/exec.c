@@ -1070,19 +1070,11 @@ EXPORT_SYMBOL_GPL(get_task_comm);
 
 void set_task_comm(struct task_struct *tsk, char *buf)
 {
-	struct sched_param param;
 	task_lock(tsk);
 	trace_task_rename(tsk, buf);
 	strlcpy(tsk->comm, buf, sizeof(tsk->comm));
 	task_unlock(tsk);
 	perf_event_comm(tsk);
-
-	if (!memcmp(tsk->comm, "ndroid.systemui", sizeof("ndroid.systemui")))
-	{
-		param.sched_priority = 1;
-		sched_setscheduler(tsk, SCHED_RR|SCHED_RESET_ON_FORK, &param);
-		return;
-	}
 }
 
 static void filename_to_taskname(char *tcomm, const char *fn, unsigned int len)
