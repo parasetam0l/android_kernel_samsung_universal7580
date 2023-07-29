@@ -451,6 +451,39 @@ static u64 freezer_parent_freezing_read(struct cgroup_subsys_state *css,
 	return (bool)(freezer->state & CGROUP_FREEZING_PARENT);
 }
 
+static u64 freezer_killable_read(struct cgroup_subsys_state *css, struct cftype *cft)
+{
+	struct freezer *freezer = css_freezer(css);
+
+	return (bool)(freezer->state & CGROUP_FREEZER_KILLABLE);
+}
+
+static int freezer_killable_write(struct cgroup_subsys_state *css, struct cftype *cft, u64 val)
+{
+	struct freezer *freezer = css_freezer(css);
+
+	if (val > 1)
+		return -EINVAL;
+
+	if (val == !!(freezer->state & CGROUP_FREEZER_KILLABLE))
+		goto out;
+
+	if (val)
+		freezer->state |= CGROUP_FREEZER_KILLABLE;
+	else
+		freezer->state &= ~CGROUP_FREEZER_KILLABLE;
+
+
+	/*
+	 * Let __refrigerator spin once for each task to set it into the
+	 * appropriate state.
+	 */
+	unfreeze_cgroup(freezer);
+
+out:
+	return 0;
+}
+
 static struct cftype files[] = {
 	{
 		.name = "state",
