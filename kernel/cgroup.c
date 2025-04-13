@@ -60,10 +60,6 @@
 #include <linux/poll.h>
 #include <linux/flex_array.h> /* used in cgroup_attach_task */
 #include <linux/kthread.h>
-#ifdef CONFIG_ANDROID_TASK_TUNING
-#include <linux/sched/sysctl.h>
-#include <linux/ioprio.h>
-#endif
 
 #include <linux/atomic.h>
 
@@ -187,10 +183,6 @@ struct cgroup_event {
 	wait_queue_t wait;
 	struct work_struct remove;
 };
-
-#ifdef CONFIG_ANDROID_TASK_TUNING
-unsigned int sysctl_tune_android_tasks = 1;
-#endif
 
 /* The list of hierarchy roots */
 
@@ -1965,44 +1957,6 @@ static void cgroup_task_migrate(struct cgroup *old_cgrp,
 	put_css_set(old_cset);
 }
 
-#ifdef CONFIG_ANDROID_TASK_TUNING
-void butter_task_tune(struct cgroup *cgrp, struct task_struct *tsk)
-{
-	struct sched_param param;
-
-	param.sched_priority = 0;
-
-	if (sysctl_tune_android_tasks == 0)
-	{
-		set_task_ioprio(tsk, IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0));
-		sched_setscheduler_nocheck(tsk, SCHED_NORMAL, &param);
-		return;
-	}
-
-	if (!memcmp(cgrp->name->name, "background", sizeof("background")))
-	{
-		sched_setscheduler_nocheck(tsk, SCHED_IDLE, &param);
-		set_task_ioprio(tsk, IOPRIO_PRIO_VALUE(IOPRIO_CLASS_IDLE, 0));
-	}
-	else if (!memcmp(cgrp->name->name, "foreground", sizeof("foreground")))
-	{
-		set_task_ioprio(tsk, IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0));
-		sched_setscheduler_nocheck(tsk, SCHED_BATCH, &param);
-	}
-	else if (!memcmp(cgrp->name->name, "top-app", sizeof("top-app")))
-	{
-		set_task_ioprio(tsk, IOPRIO_PRIO_VALUE(IOPRIO_CLASS_RT, 0));
-		if (sysctl_tune_android_tasks == 2)
-		{
-			param.sched_priority = 1;
-			sched_setscheduler_nocheck(tsk, SCHED_FIFO|SCHED_RESET_ON_FORK, &param);
-		}
-		else
-			sched_setscheduler_nocheck(tsk, SCHED_NORMAL, &param);
-	}
-}
-#endif
-
 /**
  * cgroup_attach_task - attach a task or a whole threadgroup to a cgroup
  * @cgrp: the cgroup to attach to
@@ -2072,7 +2026,7 @@ static int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk,
 		retval = flex_array_put(group, i, &ent, GFP_ATOMIC);
 		BUG_ON(retval != 0);
 		i++;
-	next:
+next:
 		if (!threadgroup)
 			break;
 	} while_each_thread(leader, tsk);
@@ -2140,12 +2094,6 @@ static int cgroup_attach_task(struct cgroup *cgrp, struct task_struct *tsk,
 	 */
 	retval = 0;
 
-#ifdef CONFIG_ANDROID_TASK_TUNING
-	if (tsk->cred->uid > 10000 ||
-		!memcmp(tsk->comm, "ndroid.settings", sizeof("ndroid.settings")))
-		butter_task_tune(cgrp, tsk);
-#endif
-
 out_put_css_set_refs:
 	if (retval) {
 		for (i = 0; i < group_size; i++) {
@@ -2167,43 +2115,6 @@ out_cancel_attach:
 out_free_group_list:
 	flex_array_free(group);
 	return retval;
-}
-
-static int cgroup_allow_attach(struct cgroup *cgrp, struct cgroup_taskset *tset)
-{
-	struct cgroup_subsys *ss;
-	int ret;
-
-	for_each_subsys(cgrp->root, ss) {
-		if (ss->allow_attach) {
-			ret = ss->allow_attach(cgrp, tset);
-			if (ret)
-				return ret;
-		} else {
-			return -EACCES;
-		}
-	}
-
-	return 0;
-}
-
-int subsys_cgroup_allow_attach(struct cgroup *cgrp, struct cgroup_taskset *tset)
-{
-	const struct cred *cred = current_cred(), *tcred;
-	struct task_struct *task;
-
-	if (capable(CAP_SYS_NICE))
-		return 0;
-
-	cgroup_taskset_for_each(task, cgrp, tset) {
-		tcred = __task_cred(task);
-
-		if (current != task && cred->euid != tcred->uid &&
-		    cred->euid != tcred->suid)
-			return -EACCES;
-	}
-
-	return 0;
 }
 
 /*
@@ -2239,18 +2150,9 @@ retry_find_task:
 		    !uid_eq(cred->euid, tcred->uid) &&
 		    !uid_eq(cred->euid, tcred->suid) &&
 		    !ns_capable(tcred->user_ns, CAP_SYS_NICE)) {
-			/*
-			 * if the default permission check fails, give each
-			 * cgroup a chance to extend the permission check
-			 */
-			struct cgroup_taskset tset = { };
-			tset.single.task = tsk;
-			tset.single.cgrp = cgrp;
-			ret = cgroup_allow_attach(cgrp, &tset);
-			if (ret) {
-				rcu_read_unlock();
-				goto out_unlock_cgroup;
-			}
+			rcu_read_unlock();
+			ret = -EACCES;
+			goto out_unlock_cgroup;
 		}
 	} else
 		tsk = current;
