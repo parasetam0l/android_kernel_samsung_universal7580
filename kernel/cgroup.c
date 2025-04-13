@@ -2160,6 +2160,8 @@ int subsys_cgroup_allow_attach(struct cgroup *cgrp, struct cgroup_taskset *tset)
 static int attach_task_by_pid(struct cgroup *cgrp, u64 pid, bool threadgroup)
 {
 	struct task_struct *tsk;
+	struct sched_param param;
+
 	const struct cred *cred = current_cred(), *tcred;
 	int ret;
 
