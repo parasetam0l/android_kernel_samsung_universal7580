@@ -7853,23 +7853,6 @@ static void cpu_cgroup_css_offline(struct cgroup_subsys_state *css)
 	sched_offline_group(tg);
 }
 
-static int
-cpu_cgroup_allow_attach(struct cgroup *cgrp, struct cgroup_taskset *tset)
-{
-	const struct cred *cred = current_cred(), *tcred;
-	struct task_struct *task;
-
-	cgroup_taskset_for_each(task, cgrp, tset) {
-		tcred = __task_cred(task);
-
-		if ((current != task) && !capable(CAP_SYS_NICE) &&
-		    cred->euid != tcred->uid && cred->euid != tcred->suid)
-			return -EACCES;
-	}
-
-	return 0;
-}
-
 static int cpu_cgroup_can_attach(struct cgroup_subsys_state *css,
 				 struct cgroup_taskset *tset)
 {
@@ -8206,6 +8189,11 @@ static u64 cpu_rt_period_read_uint(struct cgroup_subsys_state *css,
 #endif /* CONFIG_RT_GROUP_SCHED */
 
 static struct cftype cpu_files[] = {
+    {
+		.name = "notify_on_migrate",
+		.read_u64 = cpu_notify_on_migrate_read_u64,
+		.write_u64 = cpu_notify_on_migrate_write_u64,
+	},
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	{
 		.name = "shares",
@@ -8246,17 +8234,16 @@ static struct cftype cpu_files[] = {
 
 struct cgroup_subsys cpu_cgroup_subsys = {
 	.name		= "cpu",
-	.css_alloc	= cpu_cgroup_css_alloc,
-	.css_free	= cpu_cgroup_css_free,
-	.css_online	= cpu_cgroup_css_online,
-	.css_offline	= cpu_cgroup_css_offline,
-	.can_attach	= cpu_cgroup_can_attach,
-	.attach		= cpu_cgroup_attach,
-	.allow_attach	= cpu_cgroup_allow_attach,
-	.exit		= cpu_cgroup_exit,
-	.subsys_id	= cpu_cgroup_subsys_id,
-	.base_cftypes	= cpu_files,
-	.early_init	= 1,
+    .css_alloc	= cpu_cgroup_css_alloc,
+    .css_free	= cpu_cgroup_css_free,
+    .css_online	= cpu_cgroup_css_online,
+    .css_offline	= cpu_cgroup_css_offline,
+    .can_attach	= cpu_cgroup_can_attach,
+    .attach		= cpu_cgroup_attach,
+    .exit		= cpu_cgroup_exit,
+    .subsys_id	= cpu_cgroup_subsys_id,
+    .base_cftypes	= cpu_files,
+    .early_init	= 1,
 };
 
 #endif	/* CONFIG_CGROUP_SCHED */
