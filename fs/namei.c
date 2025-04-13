@@ -1433,7 +1433,7 @@ static int lookup_fast(struct nameidata *nd,
 	 */
 	if (nd->flags & LOOKUP_RCU) {
 		unsigned seq;
-		dentry = __d_lookup_rcu(parent, &nd->last, &seq);
+		dentry = __d_lookup_rcu(parent, &nd->last, &seq, nd->inode);
 		if (!dentry)
 			goto unlazy;
 
@@ -1868,7 +1868,8 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 			struct dentry *parent = nd->path.dentry;
 			nd->flags &= ~LOOKUP_JUMPED;
 			if (unlikely(parent->d_flags & DCACHE_OP_HASH)) {
-				err = parent->d_op->d_hash(parent, &this);
+				err = parent->d_op->d_hash(parent, nd->inode,
+                							   &this);
 				if (err < 0)
 					break;
 			}
@@ -2213,7 +2214,7 @@ struct dentry *lookup_one_len2(const char *name, struct vfsmount *mnt, struct de
 	 * to use its own hash..
 	 */
 	if (base->d_flags & DCACHE_OP_HASH) {
-		int err = base->d_op->d_hash(base, &this);
+		int err = base->d_op->d_hash(base, base->d_inode, &this);
 		if (err < 0)
 			return ERR_PTR(err);
 	}
