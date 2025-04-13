@@ -882,6 +882,60 @@ static void shrink_dentry_list(struct list_head *list)
 }
 
 /**
+ * prune_dcache_sb - shrink the dcache
+ * @sb: superblock
+ * @count: number of entries to try to free
+ *
+ * Attempt to shrink the superblock dcache LRU by @count entries. This is
+ * done when we need more memory an called from the superblock shrinker
+ * function.
+ *
+ * This function may fail to free any resources if all the dentries are in
+ * use.
+ */
+long prune_dcache_sb(struct super_block *sb, unsigned long nr_to_scan)
+{
+	struct dentry *dentry;
+	LIST_HEAD(referenced);
+	LIST_HEAD(tmp);
+	long freed = 0;
+
+relock:
+	spin_lock(&dcache_lru_lock);
+	while (!list_empty(&sb->s_dentry_lru)) {
+		dentry = list_entry(sb->s_dentry_lru.prev,
+				struct dentry, d_lru);
+		BUG_ON(dentry->d_sb != sb);
+
+		if (!spin_trylock(&dentry->d_lock)) {
+			spin_unlock(&dcache_lru_lock);
+			cpu_relax();
+			goto relock;
+		}
+
+		if (dentry->d_flags & DCACHE_REFERENCED) {
+			dentry->d_flags &= ~DCACHE_REFERENCED;
+			list_move(&dentry->d_lru, &referenced);
+			spin_unlock(&dentry->d_lock);
+		} else {
+			list_move_tail(&dentry->d_lru, &tmp);
+			dentry->d_flags |= DCACHE_SHRINK_LIST;
+			spin_unlock(&dentry->d_lock);
+			freed++;
+			if (!--nr_to_scan)
+				break;
+		}
+		cond_resched_lock(&dcache_lru_lock);
+	}
+	if (!list_empty(&referenced))
+		list_splice(&referenced, &sb->s_dentry_lru);
+	spin_unlock(&dcache_lru_lock);
+
+	shrink_dentry_list(&tmp);
+	return freed;
+}
+
+/**
  * shrink_dcache_sb - shrink dcache for a superblock
  * @sb: superblock
  *

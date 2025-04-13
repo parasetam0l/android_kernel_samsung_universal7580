@@ -120,6 +120,7 @@ extern void inode_wb_list_del(struct inode *inode);
 extern int get_nr_dirty_inodes(void);
 extern void evict_inodes(struct super_block *);
 extern int invalidate_inodes(struct super_block *, bool);
+extern long prune_dcache_sb(struct super_block *sb, unsigned long nr_to_scan);
 
 /*
  * dcache.c
