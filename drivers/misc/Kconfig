@@ -541,16 +541,11 @@ config SAMSUNG_JACK
 	bool "3.5 PI Jack driver for Samsung devices"
 	depends on INPUT && INPUT_GPIO && SWITCH
 	default n
-    This is 3.5 PI JACK driver for Samsung devies.
-    sec_jack from samsung driver used for samsung devices.
-
-    To samsung jack is reviewed and supported in all the
-    samsung devices.
-
-config UID_SYS_STATS
-	bool "Per-UID statistics"
-	depends on PROFILING && TASK_XACCT && TASK_IO_ACCOUNTING
 	help
+        This is 3.5 PI JACK driver for Samsung devies.
+        sec_jack from samsung driver used for samsung devices.
+        To samsung jack is reviewed and supported in all the
+        samsung devices.
 	  
 config TIMA_LOG
 	tristate "Support for dumping TIMA log"
