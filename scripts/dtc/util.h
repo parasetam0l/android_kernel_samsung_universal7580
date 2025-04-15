@@ -2,6 +2,8 @@
 #define _UTIL_H
 
 #include <stdarg.h>
+#include <stdbool.h>
+#include <getopt.h>
 
 /*
  * Copyright 2011 The Chromium Authors, All Rights Reserved.
@@ -23,9 +25,6 @@
  *                                                                   USA
  */
 
-<<<<<<< HEAD
-static inline void __attribute__((noreturn)) die(char * str, ...)
-=======
 #ifdef __GNUC__
 #define PRINTF(i, j)	__attribute__((format (printf, i, j)))
 #define NORETURN	__attribute__((noreturn))
@@ -37,13 +36,13 @@ static inline void __attribute__((noreturn)) die(char * str, ...)
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 static inline void NORETURN PRINTF(1, 2) die(const char *str, ...)
->>>>>>> 4e92f9a1ff1 (scripts/dtc: Update to upstream version v1.4.4-8-g756ffc4f52f6)
 {
 	va_list ap;
 
 	va_start(ap, str);
 	fprintf(stderr, "FATAL ERROR: ");
 	vfprintf(stderr, str, ap);
+	va_end(ap);
 	exit(1);
 }
 
@@ -73,13 +72,15 @@ extern int PRINTF(2, 3) xasprintf(char **strp, const char *fmt, ...);
 extern char *join_path(const char *path, const char *name);
 
 /**
- * Check a string of a given length to see if it is all printable and
- * has a valid terminator.
+ * Check a property of a given length to see if it is all printable and
+ * has a valid terminator. The property can contain either a single string,
+ * or multiple strings each of non-zero length.
  *
  * @param data	The string to check
  * @param len	The string length including terminator
- * @return 1 if a valid printable string, 0 if not */
-int util_is_printable_string(const void *data, int len);
+ * @return 1 if a valid printable string, 0 if not
+ */
+bool util_is_printable_string(const void *data, int len);
 
 /*
  * Parse an escaped character starting at index i in string s.  The resulting
@@ -99,6 +100,13 @@ char get_escape_char(const char *s, int *i);
 char *utilfdt_read(const char *filename);
 
 /**
+ * Like utilfdt_read(), but also passes back the size of the file read.
+ *
+ * @param len		If non-NULL, the amount of data we managed to read
+ */
+char *utilfdt_read_len(const char *filename, off_t *len);
+
+/**
  * Read a device tree file into a buffer. Does not report errors, but only
  * returns them. The value returned can be passed to strerror() to obtain
  * an error message for the user.
@@ -109,6 +117,12 @@ char *utilfdt_read(const char *filename);
  */
 int utilfdt_read_err(const char *filename, char **buffp);
 
+/**
+ * Like utilfdt_read_err(), but also passes back the size of the file read.
+ *
+ * @param len		If non-NULL, the amount of data we managed to read
+ */
+int utilfdt_read_err_len(const char *filename, char **buffp, off_t *len);
 
 /**
  * Write a device tree buffer to a file. This will report any errors on

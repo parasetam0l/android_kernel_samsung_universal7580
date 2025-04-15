@@ -54,9 +54,9 @@ static void write_prefix(FILE *f, int level)
 		fputc('\t', f);
 }
 
-static int isstring(char c)
+static bool isstring(char c)
 {
-	return (isprint(c)
+	return (isprint((unsigned char)c)
 		|| (c == '\0')
 		|| strchr("\a\b\t\n\v\f\r", c));
 }
@@ -109,7 +109,7 @@ static void write_propval_string(FILE *f, struct data val)
 			break;
 		case '\0':
 			fprintf(f, "\", ");
-			while (m && (m->offset < i)) {
+			while (m && (m->offset <= (i + 1))) {
 				if (m->type == LABEL) {
 					assert(m->offset == (i+1));
 					fprintf(f, "%s: ", m->ref);
@@ -119,7 +119,7 @@ static void write_propval_string(FILE *f, struct data val)
 			fprintf(f, "\"");
 			break;
 		default:
-			if (isprint(c))
+			if (isprint((unsigned char)c))
 				fprintf(f, "%c", c);
 			else
 				fprintf(f, "\\x%02hhx", c);
@@ -178,7 +178,7 @@ static void write_propval_bytes(FILE *f, struct data val)
 			m = m->next;
 		}
 
-		fprintf(f, "%02hhx", *bp++);
+		fprintf(f, "%02hhx", (unsigned char)(*bp++));
 		if ((const void *)bp >= propend)
 			break;
 		fprintf(f, " ");

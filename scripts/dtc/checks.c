@@ -48,7 +48,7 @@ struct check {
 	void *data;
 	bool warn, error;
 	enum checkstatus status;
-	int inprogress;
+	bool inprogress;
 	int num_prereqs;
 	struct check **prereq;
 };
@@ -86,6 +86,7 @@ static inline void  PRINTF(3, 4) check_msg(struct check *c, struct dt_info *dti,
 		vfprintf(stderr, fmt, ap);
 		fprintf(stderr, "\n");
 	}
+	va_end(ap);
 }
 
 #define FAIL(c, dti, ...)						\
@@ -118,7 +119,7 @@ static bool run_check(struct check *c, struct dt_info *dti)
 	if (c->status != UNCHECKED)
 		goto out;
 
-	c->inprogress = 1;
+	c->inprogress = true;
 
 	for (i = 0; i < c->num_prereqs; i++) {
 		struct check *prq = c->prereq[i];
@@ -141,9 +142,9 @@ static bool run_check(struct check *c, struct dt_info *dti)
 	TRACE(c, "\tCompleted, status %d", c->status);
 
 out:
-	c->inprogress = 0;
+	c->inprogress = false;
 	if ((c->status != PASSED) && (c->error))
-		error = 1;
+		error = true;
 	return error;
 }
 
@@ -1023,15 +1024,15 @@ static void disable_warning_error(struct check *c, bool warn, bool error)
 	c->error = c->error && !error;
 }
 
-void parse_checks_option(bool warn, bool error, const char *optarg)
+void parse_checks_option(bool warn, bool error, const char *arg)
 {
 	int i;
-	const char *name = optarg;
+	const char *name = arg;
 	bool enable = true;
 
-	if ((strncmp(optarg, "no-", 3) == 0)
-	    || (strncmp(optarg, "no_", 3) == 0)) {
-		name = optarg + 3;
+	if ((strncmp(arg, "no-", 3) == 0)
+	    || (strncmp(arg, "no_", 3) == 0)) {
+		name = arg + 3;
 		enable = false;
 	}
 

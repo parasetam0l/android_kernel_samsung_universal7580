@@ -34,15 +34,16 @@
 
 #include "libfdt.h"
 #include "util.h"
+#include "version_gen.h"
 
 char *xstrdup(const char *s)
 {
 	int len = strlen(s) + 1;
-	char *dup = xmalloc(len);
+	char *d = xmalloc(len);
 
-	memcpy(dup, s, len);
+	memcpy(d, s, len);
 
-	return dup;
+	return d;
 }
 
 /* based in part from (3) vsnprintf */
@@ -99,10 +100,10 @@ char *join_path(const char *path, const char *name)
 	return str;
 }
 
-int util_is_printable_string(const void *data, int len)
+bool util_is_printable_string(const void *data, int len)
 {
 	const char *s = data;
-	const char *ss;
+	const char *ss, *se;
 
 	/* zero length is not */
 	if (len == 0)
@@ -112,13 +113,19 @@ int util_is_printable_string(const void *data, int len)
 	if (s[len - 1] != '\0')
 		return 0;
 
-	ss = s;
-	while (*s && isprint(*s))
-		s++;
+	se = s + len;
 
-	/* not zero, or not done yet */
-	if (*s != '\0' || (s + 1 - ss) < len)
-		return 0;
+	while (s < se) {
+		ss = s;
+		while (s < se && *s && isprint((unsigned char)*s))
+			s++;
+
+		/* not zero, or not done yet */
+		if (*s != '\0' || s == ss)
+			return 0;
+
+		s++;
+	}
 
 	return 1;
 }
@@ -220,7 +227,7 @@ char get_escape_char(const char *s, int *i)
 	return val;
 }
 
-int utilfdt_read_err(const char *filename, char **buffp)
+int utilfdt_read_err_len(const char *filename, char **buffp, off_t *len)
 {
 	int fd = 0;	/* assume stdin */
 	char *buf = NULL;
@@ -235,16 +242,12 @@ int utilfdt_read_err(const char *filename, char **buffp)
 	}
 
 	/* Loop until we have read everything */
-	buf = malloc(bufsize);
+	buf = xmalloc(bufsize);
 	do {
 		/* Expand the buffer to hold the next chunk */
 		if (offset == bufsize) {
 			bufsize *= 2;
-			buf = realloc(buf, bufsize);
-			if (!buf) {
-				ret = ENOMEM;
-				break;
-			}
+			buf = xrealloc(buf, bufsize);
 		}
 
 		ret = read(fd, &buf[offset], bufsize - offset);
@@ -261,13 +264,20 @@ int utilfdt_read_err(const char *filename, char **buffp)
 		free(buf);
 	else
 		*buffp = buf;
+	*len = bufsize;
 	return ret;
 }
 
-char *utilfdt_read(const char *filename)
+int utilfdt_read_err(const char *filename, char **buffp)
+{
+	off_t len;
+	return utilfdt_read_err_len(filename, buffp, &len);
+}
+
+char *utilfdt_read_len(const char *filename, off_t *len)
 {
 	char *buff;
-	int ret = utilfdt_read_err(filename, &buff);
+	int ret = utilfdt_read_err_len(filename, &buff, len);
 
 	if (ret) {
 		fprintf(stderr, "Couldn't open blob from '%s': %s\n", filename,
@@ -276,6 +286,12 @@ char *utilfdt_read(const char *filename)
 	}
 	/* Successful read */
 	return buff;
+}
+
+char *utilfdt_read(const char *filename)
+{
+	off_t len;
+	return utilfdt_read_len(filename, &len);
 }
 
 int utilfdt_write_err(const char *filename, const void *blob)

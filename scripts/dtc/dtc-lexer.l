@@ -20,7 +20,6 @@
 
 %option noyywrap nounput noinput never-interactive
 
-%x INCLUDE
 %x BYTESTRING
 %x PROPNODENAME
 %s V1
@@ -39,7 +38,7 @@ LINECOMMENT	"//".*\n
 #include "srcpos.h"
 #include "dtc-parser.tab.h"
 
-YYLTYPE yylloc;
+extern bool treesource_error;
 
 /* CAUTION: this will stop working if we ever use yyless() or yyunput() */
 #define	YY_USER_ACTION \
@@ -78,7 +77,7 @@ static void PRINTF(1, 2) lexical_error(const char *fmt, ...);
 			struct data fn;
 			/* skip text before line # */
 			line = yytext;
-			while (!isdigit(*line))
+			while (!isdigit((unsigned char)*line))
 				line++;
 
 			/* regexp ensures that first and list "
@@ -209,7 +208,7 @@ static void PRINTF(1, 2) lexical_error(const char *fmt, ...);
 			return DT_REF;
 		}
 
-<*>"&{/"{PATHCHAR}+\}	{	/* new-style path reference */
+<*>"&{/"{PATHCHAR}*\}	{	/* new-style path reference */
 			yytext[yyleng-1] = '\0';
 			DPRINT("Ref: %s\n", yytext+2);
 			yylval.labelref = xstrdup(yytext+2);
@@ -283,13 +282,24 @@ static void push_input_file(const char *filename)
 }
 
 
-static int pop_input_file(void)
+static bool pop_input_file(void)
 {
 	if (srcfile_pop() == 0)
-		return 0;
+		return false;
 
 	yypop_buffer_state();
 	yyin = current_srcfile->f;
 
-	return 1;
+	return true;
+}
+
+static void lexical_error(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	srcpos_verror(&yylloc, "Lexical error", fmt, ap);
+	va_end(ap);
+
+	treesource_error = true;
 }

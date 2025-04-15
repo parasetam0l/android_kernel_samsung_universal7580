@@ -164,6 +164,7 @@ extern FILE *yyin, *yyout;
 #define EOB_ACT_LAST_MATCH 2
 
     #define YY_LESS_LINENO(n)
+    #define YY_LINENO_REWIND_TO(ptr)
     
 /* Return all but the first "n" matched characters back to the input stream. */
 #define yyless(n) \
@@ -180,11 +181,6 @@ extern FILE *yyin, *yyout;
 	while ( 0 )
 
 #define unput(c) yyunput( c, (yytext_ptr)  )
-
-#ifndef YY_TYPEDEF_YY_SIZE_T
-#define YY_TYPEDEF_YY_SIZE_T
-typedef size_t yy_size_t;
-#endif
 
 #ifndef YY_STRUCT_YY_BUFFER_STATE
 #define YY_STRUCT_YY_BUFFER_STATE
@@ -630,13 +626,12 @@ char *yytext;
 
 
 
-
-#line 38 "dtc-lexer.l"
+#line 37 "dtc-lexer.l"
 #include "dtc.h"
 #include "srcpos.h"
 #include "dtc-parser.tab.h"
 
-extern YYLTYPE yylloc;
+extern bool treesource_error;
 
 /* CAUTION: this will stop working if we ever use yyless() or yyunput() */
 #define	YY_USER_ACTION \
@@ -664,10 +659,9 @@ static void PRINTF(1, 2) lexical_error(const char *fmt, ...);
 #line 661 "dtc-lexer.lex.c"
 
 #define INITIAL 0
-#define INCLUDE 1
-#define BYTESTRING 2
-#define PROPNODENAME 3
-#define V1 4
+#define BYTESTRING 1
+#define PROPNODENAME 2
+#define V1 3
 
 #ifndef YY_NO_UNISTD_H
 /* Special case for "unistd.h", since it is non-ANSI. We include it way
@@ -857,10 +851,6 @@ YY_DECL
 	char *yy_cp, *yy_bp;
 	int yy_act;
     
-#line 67 "dtc-lexer.l"
-
-#line 858 "dtc-lexer.lex.c"
-
 	if ( !(yy_init) )
 		{
 		(yy_init) = 1;
@@ -963,7 +953,7 @@ YY_RULE_SETUP
 			struct data fn;
 			/* skip text before line # */
 			line = yytext;
-			while (!isdigit(*line))
+			while (!isdigit((unsigned char)*line))
 				line++;
 
 			/* regexp ensures that first and list "
@@ -988,7 +978,6 @@ YY_RULE_SETUP
 		}
 	YY_BREAK
 case YY_STATE_EOF(INITIAL):
-case YY_STATE_EOF(INCLUDE):
 case YY_STATE_EOF(BYTESTRING):
 case YY_STATE_EOF(PROPNODENAME):
 case YY_STATE_EOF(V1):
@@ -1393,6 +1382,7 @@ ECHO;
 			"fatal flex scanner internal error--no action found" );
 	} /* end of action switch */
 		} /* end of scanning one token */
+	} /* end of user's declarations */
 } /* end of yylex */
 
 /* yy_get_next_buffer - try to read in a new buffer
@@ -1455,7 +1445,7 @@ static int yy_get_next_buffer (void)
 			{ /* Not enough room in the buffer - grow it. */
 
 			/* just a shorter name for the current buffer */
-			YY_BUFFER_STATE b = YY_CURRENT_BUFFER;
+			YY_BUFFER_STATE b = YY_CURRENT_BUFFER_LVALUE;
 
 			int yy_c_buf_p_offset =
 				(int) ((yy_c_buf_p) - b->yy_ch_buf);
@@ -1493,7 +1483,7 @@ static int yy_get_next_buffer (void)
 
 		/* Read in more data. */
 		YY_INPUT( (&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move]),
-			(yy_n_chars), (size_t) num_to_read );
+			(yy_n_chars), num_to_read );
 
 		YY_CURRENT_BUFFER_LVALUE->yy_n_chars = (yy_n_chars);
 		}
@@ -1589,7 +1579,7 @@ static int yy_get_next_buffer (void)
 	yy_current_state = yy_nxt[yy_base[yy_current_state] + (flex_int16_t) yy_c];
 	yy_is_jam = (yy_current_state == 165);
 
-	return yy_is_jam ? 0 : yy_current_state;
+		return yy_is_jam ? 0 : yy_current_state;
 }
 
 #ifndef YY_NO_UNPUT
@@ -1996,7 +1986,7 @@ YY_BUFFER_STATE yy_scan_bytes  (yyconst char * yybytes, int  _yybytes_len )
 	YY_BUFFER_STATE b;
 	char *buf;
 	yy_size_t n;
-	int i;
+	yy_size_t i;
     
 	/* Get memory for full buffer, including space for trailing EOB's. */
 	n = (yy_size_t) _yybytes_len + 2;
@@ -2244,14 +2234,25 @@ static void push_input_file(const char *filename)
 }
 
 
-static int pop_input_file(void)
+static bool pop_input_file(void)
 {
 	if (srcfile_pop() == 0)
-		return 0;
+		return false;
 
 	yypop_buffer_state();
 	yyin = current_srcfile->f;
 
-	return 1;
+	return true;
+}
+
+static void lexical_error(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	srcpos_verror(&yylloc, "Lexical error", fmt, ap);
+	va_end(ap);
+
+	treesource_error = true;
 }
 

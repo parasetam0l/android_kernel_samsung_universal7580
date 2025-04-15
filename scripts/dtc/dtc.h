@@ -38,9 +38,9 @@
 #include "util.h"
 
 #ifdef DEBUG
-#define debug(fmt,args...)	printf(fmt, ##args)
+#define debug(...)	printf(__VA_ARGS__)
 #else
-#define debug(fmt,args...)
+#define debug(...)
 #endif
 
 #define DEFAULT_FDT_VERSION	17
@@ -69,7 +69,6 @@ typedef uint32_t cell_t;
 #define strneq(a, b, n)	(strncmp((a), (b), (n)) == 0)
 
 #define ALIGN(x, a)	(((x) + (a) - 1) & ~((a) - 1))
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 /* Data blobs */
 enum markertype {
@@ -92,7 +91,7 @@ struct data {
 };
 
 
-#define empty_data ((struct data){ /* all .members = 0 or NULL */ })
+#define empty_data ((struct data){ 0 /* all .members = 0 or NULL */ })
 
 #define for_each_marker(m) \
 	for (; (m); (m) = (m)->next)
@@ -122,7 +121,7 @@ struct data data_append_align(struct data d, int align);
 
 struct data data_add_marker(struct data d, enum markertype type, char *ref);
 
-int data_is_one_string(struct data d);
+bool data_is_one_string(struct data d);
 
 /* DT constraints */
 
@@ -131,7 +130,7 @@ int data_is_one_string(struct data d);
 
 /* Live trees */
 struct label {
-	int deleted;
+	bool deleted;
 	char *label;
 	struct label *next;
 };
@@ -141,7 +140,7 @@ struct bus_type {
 };
 
 struct property {
-	int deleted;
+	bool deleted;
 	char *name;
 	struct data val;
 
@@ -151,7 +150,7 @@ struct property {
 };
 
 struct node {
-	int deleted;
+	bool deleted;
 	char *name;
 	struct property *proplist;
 	struct node *children;

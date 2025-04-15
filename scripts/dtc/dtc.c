@@ -23,8 +23,6 @@
 #include "dtc.h"
 #include "srcpos.h"
 
-#include "version_gen.h"
-
 /*
  * Command line options
  */
@@ -174,7 +172,7 @@ int main(int argc, char *argv[])
 	const char *outform = NULL;
 	const char *outname = "-";
 	const char *depname = NULL;
-	int force = 0, sort = 0;
+	bool force = false, sort = false;
 	const char *arg;
 	int opt;
 	FILE *outf = NULL;
@@ -187,8 +185,7 @@ int main(int argc, char *argv[])
 	padsize    = 0;
 	alignsize  = 0;
 
-	while ((opt = getopt(argc, argv, "hI:O:o:V:d:R:S:p:fqb:i:vH:sW:E:"))
-			!= EOF) {
+	while ((opt = util_getopt_long()) != EOF) {
 		switch (opt) {
 		case 'I':
 			inform = optarg;
@@ -221,7 +218,7 @@ int main(int argc, char *argv[])
 				    alignsize);
 			break;
 		case 'f':
-			force = 1;
+			force = true;
 			break;
 		case 'q':
 			quiet++;
@@ -233,8 +230,7 @@ int main(int argc, char *argv[])
 			srcfile_add_search_path(optarg);
 			break;
 		case 'v':
-			printf("Version: %s\n", DTC_VERSION);
-			exit(0);
+			util_version();
 		case 'H':
 			if (streq(optarg, "legacy"))
 				phandle_format = PHANDLE_LEGACY;
@@ -248,7 +244,7 @@ int main(int argc, char *argv[])
 			break;
 
 		case 's':
-			sort = 1;
+			sort = true;
 			break;
 
 		case 'W':
@@ -267,13 +263,14 @@ int main(int argc, char *argv[])
 			break;
 
 		case 'h':
+			usage(NULL);
 		default:
-			usage();
+			usage("unknown option");
 		}
 	}
 
 	if (argc > (optind+1))
-		usage();
+		usage("missing files");
 	else if (argc < (optind+1))
 		arg = "-";
 	else
@@ -282,9 +279,6 @@ int main(int argc, char *argv[])
 	/* minsize and padsize are mutually exclusive */
 	if (minsize && padsize)
 		die("Can't set both -p and -S\n");
-
-	if (minsize)
-		fprintf(stderr, "DTC: Use of \"-S\" is deprecated; it will be removed soon, use \"-p\" instead\n");
 
 	if (depname) {
 		depfile = fopen(depname, "w");
@@ -349,7 +343,7 @@ int main(int argc, char *argv[])
 	if (streq(outname, "-")) {
 		outf = stdout;
 	} else {
-		outf = fopen(outname, "w");
+		outf = fopen(outname, "wb");
 		if (! outf)
 			die("Couldn't open output file %s: %s\n",
 			    outname, strerror(errno));
