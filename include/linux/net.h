@@ -24,6 +24,9 @@
 #include <linux/fcntl.h>	/* For O_CLOEXEC and O_NONBLOCK */
 #include <linux/kmemcheck.h>
 #include <linux/rcupdate.h>
+#ifdef CONFIG_MPTCP
+#include <linux/jump_label.h>
+#endif
 #include <uapi/linux/net.h>
 
 struct poll_table_struct;
@@ -115,6 +118,10 @@ struct socket {
 	struct file		*file;
 	struct sock		*sk;
 	const struct proto_ops	*ops;
+	/* START_OF_KNOX_VPN */
+	__u64   knox_sent;
+	__u64   knox_recv;
+	/* END_OF_KNOX_VPN */
 };
 
 struct vm_area_struct;
@@ -243,6 +250,11 @@ do {								\
 	net_ratelimited_function(pr_info, fmt, ##__VA_ARGS__)
 #define net_dbg_ratelimited(fmt, ...)				\
 	net_ratelimited_function(pr_debug, fmt, ##__VA_ARGS__)
+
+#ifdef CONFIG_MPTCP
+bool __net_get_random_once(void *buf, int nbytes, bool *done,
+			   struct static_key *done_key);
+#endif
 
 #define net_random()		prandom_u32()
 #define net_srandom(seed)	prandom_seed((__force u32)(seed))

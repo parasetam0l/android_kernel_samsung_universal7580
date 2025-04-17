@@ -149,10 +149,10 @@ static void exynos_lli_print_dump(struct work_struct *work)
 	struct exynos_mphy *phy = dev_get_drvdata(lli->mphy);
 	int len = 0, i = 0;
 
-	len = ARRAY_SIZE(lli_debug_clk_info);
+	/*len = ARRAY_SIZE(lli_debug_clk_info);
 	for (i = 0; i < len; i++)
 		dev_err(lli->dev, "[LLI-CLK] 0x%p : 0x%08x\n",
-				lli_debug_clk_info[i], dump->clk[i]);
+				lli_debug_clk_info[i], dump->clk[i]);*/
 
 	len = ARRAY_SIZE(lli_debug_info);
 	for (i = 0; i < len; i++)
@@ -196,9 +196,9 @@ static int exynos_lli_reg_dump(struct mipi_lli *lli)
 
 	memset(dump, 0, sizeof(struct mipi_lli_dump));
 
-	len = ARRAY_SIZE(lli_debug_clk_info);
+	/*len = ARRAY_SIZE(lli_debug_clk_info);
 	for (i = 0; i < len; i++)
-		dump->clk[i] = readl(lli_debug_clk_info[i]);
+		dump->clk[i] = readl(lli_debug_clk_info[i]);*/
 
 	len = ARRAY_SIZE(lli_debug_info);
 	for (i = 0; i < len; i++)

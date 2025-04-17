@@ -206,7 +206,7 @@ static struct dentry *proc_lookupfd_common(struct inode *dir,
 {
 	struct task_struct *task = get_proc_task(dir);
 	int result = -ENOENT;
-	unsigned fd = name_to_int(dentry);
+	unsigned fd = name_to_int(&dentry->d_name);
 
 	if (!task)
 		goto out_no_task;
@@ -296,11 +296,10 @@ int proc_fd_permission(struct inode *inode, int mask)
 
 	rcu_read_lock();
 	p = pid_task(proc_pid(inode), PIDTYPE_PID);
-	
 	if (p && same_thread_group(p, current))
 		rv = 0;
-	
 	rcu_read_unlock();
+
 	return rv;
 }
 

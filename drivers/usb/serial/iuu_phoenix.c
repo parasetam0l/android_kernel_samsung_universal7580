@@ -17,6 +17,7 @@
  */
 #include <linux/kernel.h>
 #include <linux/errno.h>
+#include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/tty.h>
 #include <linux/tty_driver.h>
@@ -551,29 +552,23 @@ static int iuu_uart_flush(struct usb_serial_port *port)
 	struct device *dev = &port->dev;
 	int i;
 	int status;
-	u8 *rxcmd;
+	u8 rxcmd = IUU_UART_RX;
 	struct iuu_private *priv = usb_get_serial_port_data(port);
 
 	if (iuu_led(port, 0xF000, 0, 0, 0xFF) < 0)
 		return -EIO;
 
-	rxcmd = kmalloc(1, GFP_KERNEL);
-	if (!rxcmd)
-		return -ENOMEM;
-
-	rxcmd[0] = IUU_UART_RX;
-
 	for (i = 0; i < 2; i++) {
-		status = bulk_immediate(port, rxcmd, 1);
+		status = bulk_immediate(port, &rxcmd, 1);
 		if (status != IUU_OPERATION_OK) {
 			dev_dbg(dev, "%s - uart_flush_write error\n", __func__);
-			goto out_free;
+			return status;
 		}
 
 		status = read_immediate(port, &priv->len, 1);
 		if (status != IUU_OPERATION_OK) {
 			dev_dbg(dev, "%s - uart_flush_read error\n", __func__);
-			goto out_free;
+			return status;
 		}
 
 		if (priv->len > 0) {
@@ -581,16 +576,12 @@ static int iuu_uart_flush(struct usb_serial_port *port)
 			status = read_immediate(port, priv->buf, priv->len);
 			if (status != IUU_OPERATION_OK) {
 				dev_dbg(dev, "%s - uart_flush_read error\n", __func__);
-				goto out_free;
+				return status;
 			}
 		}
 	}
 	dev_dbg(dev, "%s - uart_flush_read OK!\n", __func__);
 	iuu_led(port, 0, 0xF000, 0, 0xFF);
-
-out_free:
-	kfree(rxcmd);
-
 	return status;
 }
 
@@ -727,16 +718,14 @@ static int iuu_uart_write(struct tty_struct *tty, struct usb_serial_port *port,
 	struct iuu_private *priv = usb_get_serial_port_data(port);
 	unsigned long flags;
 
-	spin_lock_irqsave(&priv->lock, flags);
+	if (count > 256)
+		return -ENOMEM;
 
-	count = min(count, 256 - priv->writelen);
-	if (count == 0)
-		goto out;
+	spin_lock_irqsave(&priv->lock, flags);
 
 	/* fill the buffer */
 	memcpy(priv->writebuf + priv->writelen, buf, count);
 	priv->writelen += count;
-out:
 	spin_unlock_irqrestore(&priv->lock, flags);
 
 	return count;
@@ -791,7 +780,7 @@ uart_enable_failed:
 	return status;
 }
 
-/*  Disables the IUU UART (a.k.a. the Phoenix voiderface) */
+/*  Diables the IUU UART (a.k.a. the Phoenix voiderface) */
 static int iuu_uart_off(struct usb_serial_port *port)
 {
 	int status;
@@ -1151,7 +1140,7 @@ static int iuu_vcc_set(struct usb_serial_port *port, unsigned int vcc)
  * Sysfs Attributes
  */
 
-static ssize_t vcc_mode_show(struct device *dev,
+static ssize_t show_vcc_mode(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct usb_serial_port *port = to_usb_serial_port(dev);
@@ -1160,7 +1149,7 @@ static ssize_t vcc_mode_show(struct device *dev,
 	return sprintf(buf, "%d\n", priv->vcc);
 }
 
-static ssize_t vcc_mode_store(struct device *dev,
+static ssize_t store_vcc_mode(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct usb_serial_port *port = to_usb_serial_port(dev);
@@ -1173,7 +1162,7 @@ static ssize_t vcc_mode_store(struct device *dev,
 		goto fail_store_vcc_mode;
 	}
 
-	dev_dbg(dev, "%s: setting vcc_mode = %ld\n", __func__, v);
+	dev_dbg(dev, "%s: setting vcc_mode = %ld", __func__, v);
 
 	if ((v != 3) && (v != 5)) {
 		dev_err(dev, "%s - vcc_mode %ld is invalid\n", __func__, v);
@@ -1184,7 +1173,9 @@ static ssize_t vcc_mode_store(struct device *dev,
 fail_store_vcc_mode:
 	return count;
 }
-static DEVICE_ATTR_RW(vcc_mode);
+
+static DEVICE_ATTR(vcc_mode, S_IRUSR | S_IWUSR, show_vcc_mode,
+	store_vcc_mode);
 
 static int iuu_create_sysfs_attrs(struct usb_serial_port *port)
 {

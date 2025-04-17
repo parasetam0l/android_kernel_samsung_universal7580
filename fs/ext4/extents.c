@@ -528,9 +528,13 @@ static int __ext4_ext_check(const char *function, unsigned int line,
 	return 0;
 
 corrupted:
-	printk(KERN_ERR "Print invalid extent entries\n");
-	ext4_ext_show_eh(inode, eh);
-
+	if (bh) {
+		printk(KERN_ERR "Print invalid extent bh: %s\n", error_msg);
+		print_bh(inode->i_sb, bh, 0, EXT4_BLOCK_SIZE(inode->i_sb));
+	} else {
+		printk(KERN_ERR "Print invalid extent entries\n");
+		ext4_ext_show_eh(inode, eh);
+	}
 	ext4_error_inode(inode, function, line, 0,
 			"pblk %llu bad header/extent: %s - magic %x, "
 			"entries %u, max %u(%u), depth %u(%u)",

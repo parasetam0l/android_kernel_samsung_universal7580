@@ -389,10 +389,11 @@ struct flex_groups {
 #define EXT4_EA_INODE_FL	        0x00200000 /* Inode used for large EA */
 #define EXT4_EOFBLOCKS_FL		0x00400000 /* Blocks allocated beyond EOF */
 #define EXT4_INLINE_DATA_FL		0x10000000 /* Inode has inline data. */
+#define EXT4_CORE_FILE_FL		0x40000000
 #define EXT4_RESERVED_FL		0x80000000 /* reserved for ext4 lib */
 
-#define EXT4_FL_USER_VISIBLE		0x004BDFFF /* User visible flags */
-#define EXT4_FL_USER_MODIFIABLE		0x004380FF /* User modifiable flags */
+#define EXT4_FL_USER_VISIBLE		0x404BDFFF /* User visible flags */
+#define EXT4_FL_USER_MODIFIABLE		0x404380FF /* User modifiable flags */
 
 /* Flags that should be inherited by new inodes from their parent. */
 #define EXT4_FL_INHERITED (EXT4_SECRM_FL | EXT4_UNRM_FL | EXT4_COMPR_FL |\
@@ -446,6 +447,7 @@ enum {
 	EXT4_INODE_EA_INODE	= 21,	/* Inode used for large EA */
 	EXT4_INODE_EOFBLOCKS	= 22,	/* Blocks allocated beyond EOF */
 	EXT4_INODE_INLINE_DATA	= 28,	/* Data in inode. */
+	EXT4_INODE_CORE_FILE	= 30,
 	EXT4_INODE_RESERVED	= 31,	/* reserved for ext4 lib */
 };
 
@@ -490,6 +492,7 @@ static inline void ext4_check_flag_values(void)
 	CHECK_FLAG_VALUE(EA_INODE);
 	CHECK_FLAG_VALUE(EOFBLOCKS);
 	CHECK_FLAG_VALUE(INLINE_DATA);
+	CHECK_FLAG_VALUE(CORE_FILE);
 	CHECK_FLAG_VALUE(RESERVED);
 }
 
@@ -1050,6 +1053,8 @@ struct ext4_inode_info {
 #define EXT4_MOUNT_POSIX_ACL		0x08000	/* POSIX Access Control Lists */
 #define EXT4_MOUNT_NO_AUTO_DA_ALLOC	0x10000	/* No auto delalloc mapping */
 #define EXT4_MOUNT_BARRIER		0x20000 /* Use block barriers */
+#define EXT4_MOUNT_NO_SEHASH_XATTR	0x40000 /* Ignore security.sehash extended attribute */
+#define EXT4_MOUNT_DEBUG_BDINFO		0x40000 /* Debug backing device info. */
 #define EXT4_MOUNT_QUOTA		0x80000 /* Some quota option set */
 #define EXT4_MOUNT_USRQUOTA		0x100000 /* "old" user quota */
 #define EXT4_MOUNT_GRPQUOTA		0x200000 /* "old" group quota */
@@ -1209,6 +1214,7 @@ struct ext4_super_block {
 	__le64	s_kbytes_written;	/* nr of lifetime kilobytes written */
 	__le32	s_snapshot_inum;	/* Inode number of active snapshot */
 	__le32	s_snapshot_id;		/* sequential ID of active snapshot */
+#define ext4_sec_r_blocks_count(es)	(le64_to_cpu(es->s_snapshot_r_blocks_count))
 	__le64	s_snapshot_r_blocks_count; /* reserved blocks for active
 					      snapshot's future use */
 	__le32	s_snapshot_list;	/* inode number of the head of the
@@ -1233,7 +1239,7 @@ struct ext4_super_block {
 	__le32	s_backup_bgs[2];	/* groups with sparse_super2 SBs */
 	__le32	s_reserved[100];	/* Padding to the end of the block */
 	__le32	s_sec_magic;		/* flag for reserved inodes */
-	__le32	s_reserved2[5];		/* Padding to the end of the block */
+	__le32	s_reserved2[5];
 	__le32	s_checksum;		/* crc32c(superblock) */
 };
 
@@ -1340,6 +1346,8 @@ struct ext4_sb_info {
 	unsigned short *s_mb_offsets;
 	unsigned int *s_mb_maxs;
 	unsigned int s_group_info_size;
+	struct list_head s_freed_data_list;	/* List of blocks to be freed
+						   after commit completed */
 
 	/* tunables */
 	unsigned long s_stripe;
@@ -2115,6 +2123,7 @@ static inline void ext4_update_dx_flag(struct inode *inode)
 		WARN_ON_ONCE(EXT4_HAS_RO_COMPAT_FEATURE(inode->i_sb,
 							EXT4_FEATURE_RO_COMPAT_METADATA_CSUM));
 		ext4_clear_inode_flag(inode, EXT4_INODE_INDEX);
+	}
 }
 static unsigned char ext4_filetype_table[] = {
 	DT_UNKNOWN, DT_REG, DT_DIR, DT_CHR, DT_BLK, DT_FIFO, DT_SOCK, DT_LNK
@@ -2185,6 +2194,8 @@ extern int ext4_group_add_blocks(handle_t *handle, struct super_block *sb,
 				ext4_fsblk_t block, unsigned long count);
 extern int ext4_trim_fs(struct super_block *, struct fstrim_range *,
 				unsigned long blkdev_flags);
+extern ssize_t ext4_mb_freefrag_show(struct ext4_sb_info *sbi, char *buf);
+extern void ext4_process_freed_data(struct super_block *sb, tid_t commit_tid);
 
 /* inode.c */
 struct buffer_head *ext4_getblk(handle_t *, struct inode *, ext4_lblk_t, int);

@@ -126,9 +126,9 @@ typedef void (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
 
 /* File hasn't page cache and can't be mmaped, for stackable filesystem */
 #define FMODE_NONMAPPABLE        ((__force fmode_t)0x400000)
-
+   
 /* File page don't need to be cached, for stackable filesystem's lower file */
-#define FMODE_NONCACHEABLE		((__force fmode_t)0x800000)
+#define FMODE_NONCACHEABLE     ((__force fmode_t)0x800000)
 
 /* File was opened by fanotify and shouldn't generate fanotify events */
 #define FMODE_NONOTIFY		((__force fmode_t)0x1000000)
@@ -451,6 +451,7 @@ struct address_space {
 #ifdef CONFIG_CRYPTO_FIPS
 	bool			cc_enable;	/* cc flag */
 #endif
+	bool			plain_text;	/* plain text flag */
 #endif
 #ifdef CONFIG_SDP
 	int userid;
@@ -958,9 +959,9 @@ static inline int file_check_writeable(struct file *filp)
 /* Page cache limit. The filesystems should put that into their s_maxbytes 
    limits, otherwise bad things can happen in VM. */ 
 #if BITS_PER_LONG==32
-#define MAX_LFS_FILESIZE	(((loff_t)PAGE_CACHE_SIZE << (BITS_PER_LONG-1))-1) 
+#define MAX_LFS_FILESIZE	((loff_t)ULONG_MAX << PAGE_SHIFT)
 #elif BITS_PER_LONG==64
-#define MAX_LFS_FILESIZE 	((loff_t)0x7fffffffffffffffLL)
+#define MAX_LFS_FILESIZE 	((loff_t)LLONG_MAX)
 #endif
 
 #define FL_POSIX	1
@@ -1544,6 +1545,7 @@ extern int vfs_mkdir2(struct vfsmount *, struct inode *, struct dentry *, umode_
 extern int vfs_mknod(struct inode *, struct dentry *, umode_t, dev_t);
 extern int vfs_mknod2(struct vfsmount *, struct inode *, struct dentry *, umode_t, dev_t);
 extern int vfs_symlink(struct inode *, struct dentry *, const char *);
+extern int vfs_symlink2(struct vfsmount *, struct inode *, struct dentry *, const char *);
 extern int vfs_link(struct dentry *, struct inode *, struct dentry *);
 extern int vfs_link2(struct vfsmount *, struct dentry *, struct inode *, struct dentry *);
 extern int vfs_rmdir(struct inode *, struct dentry *);
@@ -1603,7 +1605,6 @@ typedef int (*filldir_t)(void *, const char *, int, loff_t, u64, unsigned);
 struct dir_context {
 	const filldir_t actor;
 	loff_t pos;
-	bool romnt;
 };
 
 struct block_device_operations;
@@ -1667,6 +1668,8 @@ struct inode_operations {
 	int (*mknod) (struct inode *,struct dentry *,umode_t,dev_t);
 	int (*rename) (struct inode *, struct dentry *,
 			struct inode *, struct dentry *);
+	int (*rename2) (struct inode *, struct dentry *,
+			struct inode *, struct dentry *, unsigned int);
 	int (*setattr) (struct dentry *, struct iattr *);
 	int (*setattr2) (struct vfsmount *, struct dentry *, struct iattr *);
 	int (*getattr) (struct vfsmount *mnt, struct dentry *, struct kstat *);
@@ -1715,7 +1718,7 @@ struct super_operations {
 	void (*umount_begin) (struct super_block *);
 
 	int (*show_options)(struct seq_file *, struct dentry *);
-	int (*show_options2)(struct vfsmount *,struct seq_file *, struct dentry *);
+	int (*show_options2)(struct vfsmount *, struct seq_file *, struct dentry *);
 	int (*show_devname)(struct seq_file *, struct dentry *);
 	int (*show_path)(struct seq_file *, struct dentry *);
 	int (*show_stats)(struct seq_file *, struct dentry *);
@@ -1979,6 +1982,17 @@ extern struct dentry *mount_pseudo(struct file_system_type *, char *,
 	(((fops) && try_module_get((fops)->owner) ? (fops) : NULL))
 #define fops_put(fops) \
 	do { if (fops) module_put((fops)->owner); } while(0)
+/*
+ * This one is to be used *ONLY* from ->open() instances.
+ * fops must be non-NULL, pinned down *and* module dependencies
+ * should be sufficient to pin the caller down as well.
+ */
+#define replace_fops(f, fops) \
+	do {	\
+		struct file *__file = (f); \
+		fops_put(__file->f_op); \
+		BUG_ON(!(__file->f_op = (fops))); \
+	} while(0)
 
 extern int register_filesystem(struct file_system_type *);
 extern int unregister_filesystem(struct file_system_type *);
@@ -2353,6 +2367,8 @@ extern int notify_change(struct dentry *, struct iattr *);
 extern int notify_change2(struct vfsmount *, struct dentry *, struct iattr *);
 extern int inode_permission(struct inode *, int);
 extern int inode_permission2(struct vfsmount *, struct inode *, int);
+extern int __inode_permission(struct inode *, int);
+extern int __inode_permission2(struct vfsmount *, struct inode *, int);
 extern int generic_permission(struct inode *, int);
 
 static inline bool execute_ok(struct inode *inode)

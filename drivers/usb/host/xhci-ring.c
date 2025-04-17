@@ -1688,13 +1688,10 @@ static void handle_port_status(struct xhci_hcd *xhci,
 		}
 	}
 
-	if ((temp & PORT_PLC) &&
-	    DEV_SUPERSPEED(temp) &&
-	    ((temp & PORT_PLS_MASK) == XDEV_U0 ||
-	     (temp & PORT_PLS_MASK) == XDEV_U1 ||
-	     (temp & PORT_PLS_MASK) == XDEV_U2)) {
+	if ((temp & PORT_PLC) && (temp & PORT_PLS_MASK) == XDEV_U0 &&
+			DEV_SUPERSPEED(temp)) {
 		xhci_dbg(xhci, "resume SS port %d finished\n", port_id);
-		/* We've just brought the device into U0/1/2 through either the
+		/* We've just brought the device into U0 through either the
 		 * Resume state after a device remote wakeup, or through the
 		 * U3Exit state after a host-initiated resume.  If it's a device
 		 * initiated remote wake, don't pass up the link state change,
@@ -2850,8 +2847,6 @@ static void queue_trb(struct xhci_hcd *xhci, struct xhci_ring *ring,
 	trb->field[0] = cpu_to_le32(field1);
 	trb->field[1] = cpu_to_le32(field2);
 	trb->field[2] = cpu_to_le32(field3);
-	/* make sure TRB is fully written before giving it to the controller */
-	wmb();
 	trb->field[3] = cpu_to_le32(field4);
 	inc_enq(xhci, ring, more_trbs_coming);
 }

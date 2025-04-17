@@ -55,6 +55,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/ext4.h>
 
+void (*ufs_debug_func)(void *) = NULL;
+
 static struct proc_dir_entry *ext4_proc_root;
 static struct kset *ext4_kset;
 static struct ext4_lazy_init *ext4_li_info;
@@ -361,6 +363,9 @@ static void ext4_journal_commit_callback(journal_t *journal, transaction_t *txn)
 	struct ext4_journal_cb_entry	*jce;
 
 	BUG_ON(txn->t_state == T_FINISHED);
+
+	ext4_process_freed_data(sb, txn->t_tid);
+
 	spin_lock(&sbi->s_md_lock);
 	while (!list_empty(&txn->t_private_list)) {
 		jce = list_entry(txn->t_private_list.next,
@@ -411,12 +416,15 @@ static void ext4_handle_error(struct super_block *sb, char* buf)
 		smp_wmb();
 		sb->s_flags |= MS_RDONLY;
 	}
+
+	if (ufs_debug_func)
+		ufs_debug_func(NULL);
 	if (test_opt(sb, ERRORS_PANIC)) {
 		if (EXT4_SB(sb)->s_journal &&
 		  !(EXT4_SB(sb)->s_journal->j_flags & JBD2_REC_ERR))
 			return;
-		panic("EXT4-fs (device %s): panic! %s\n",
-			sb->s_id, buf?buf:"no message");
+		panic("EXT4(%s:%s\n",
+			sb->s_id, buf?buf:"no message)");
 	}
 }
 
@@ -533,7 +541,6 @@ void __ext4_error_file(struct file *file, const char *function,
 			printk(KERN_ERR "__ext4_error: failed to allocate page buf for panic msg\n");
 		va_end(args);
 	}
->>>>>>> 3e84d571ad0 (ext4: add ratelimiting to ext4 messages)
 
 	save_error_info(inode->i_sb, function, line);
 	ext4_handle_error(inode->i_sb, page_buf);
@@ -653,7 +660,9 @@ void __ext4_abort(struct super_block *sb, const char *function,
 			jbd2_journal_abort(EXT4_SB(sb)->s_journal, -EIO);
 		save_error_info(sb, function, line);
 	}
-	if (test_opt(sb, ERRORS_PANIC)) {
+	if (ufs_debug_func)
+		ufs_debug_func(NULL);
+	if (test_opt(sb, ERRORS_PANIC) && !ignore_fs_panic) {
 		if (EXT4_SB(sb)->s_journal &&
 		  !(EXT4_SB(sb)->s_journal->j_flags & JBD2_REC_ERR))
 			return;
@@ -710,6 +719,7 @@ __acquires(bitlock)
 	es->s_last_error_ino = cpu_to_le32(ino);
 	es->s_last_error_block = cpu_to_le64(block);
 	__save_error_info(sb, function, line);
+
 	if (ext4_error_ratelimit(sb)) {
 		va_start(args, fmt);
 		vaf.fmt = fmt;
@@ -880,6 +890,10 @@ static void ext4_put_super(struct super_block *sb)
 		remove_proc_entry("options", sbi->s_proc);
 		remove_proc_entry(sb->s_id, ext4_proc_root);
 	}
+
+	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC)
+		sysfs_delete_link(&ext4_kset->kobj, &sbi->s_kobj, "userdata");
+
 	kobject_del(&sbi->s_kobj);
 
 	rcu_read_lock();
@@ -1212,7 +1226,7 @@ enum {
 	Opt_bsd_df, Opt_minix_df, Opt_grpid, Opt_nogrpid,
 	Opt_resgid, Opt_resuid, Opt_sb, Opt_err_cont, Opt_err_panic, Opt_err_ro,
 	Opt_nouid32, Opt_debug, Opt_removed,
-	Opt_user_xattr, Opt_nouser_xattr, Opt_acl, Opt_noacl,
+	Opt_user_xattr, Opt_nouser_xattr, Opt_no_sehash_xattr, Opt_acl, Opt_noacl,
 	Opt_auto_da_alloc, Opt_noauto_da_alloc, Opt_noload,
 	Opt_commit, Opt_min_batch_time, Opt_max_batch_time, Opt_journal_dev,
 	Opt_journal_path, Opt_journal_checksum, Opt_journal_async_commit,
@@ -1228,6 +1242,7 @@ enum {
 	Opt_dioread_nolock, Opt_dioread_lock,
 	Opt_discard, Opt_nodiscard, Opt_init_itable, Opt_noinit_itable,
 	Opt_max_dir_size_kb,
+	Opt_debug_bdinfo,
 };
 
 static const match_table_t tokens = {
@@ -1249,6 +1264,7 @@ static const match_table_t tokens = {
 	{Opt_removed, "orlov"},
 	{Opt_user_xattr, "user_xattr"},
 	{Opt_nouser_xattr, "nouser_xattr"},
+	{Opt_no_sehash_xattr, "no_sehash_xattr"},
 	{Opt_acl, "acl"},
 	{Opt_noacl, "noacl"},
 	{Opt_noload, "norecovery"},
@@ -1308,6 +1324,7 @@ static const match_table_t tokens = {
 	{Opt_removed, "reservation"},	/* mount option from ext2/3 */
 	{Opt_removed, "noreservation"}, /* mount option from ext2/3 */
 	{Opt_removed, "journal=%u"},	/* mount option from ext2/3 */
+	{Opt_debug_bdinfo, "debug_bdinfo"},
 	{Opt_err, NULL},
 };
 
@@ -1477,6 +1494,7 @@ static const struct mount_opts {
 	 MOPT_NO_EXT2 | MOPT_DATAJ},
 	{Opt_user_xattr, EXT4_MOUNT_XATTR_USER, MOPT_SET},
 	{Opt_nouser_xattr, EXT4_MOUNT_XATTR_USER, MOPT_CLEAR},
+	{Opt_no_sehash_xattr, EXT4_MOUNT_NO_SEHASH_XATTR, MOPT_SET},
 #ifdef CONFIG_EXT4_FS_POSIX_ACL
 	{Opt_acl, EXT4_MOUNT_POSIX_ACL, MOPT_SET},
 	{Opt_noacl, EXT4_MOUNT_POSIX_ACL, MOPT_CLEAR},
@@ -1501,6 +1519,7 @@ static const struct mount_opts {
 	{Opt_jqfmt_vfsv0, QFMT_VFS_V0, MOPT_QFMT},
 	{Opt_jqfmt_vfsv1, QFMT_VFS_V1, MOPT_QFMT},
 	{Opt_max_dir_size_kb, 0, MOPT_GTE0},
+	{Opt_debug_bdinfo, EXT4_MOUNT_DEBUG_BDINFO, MOPT_SET},
 	{Opt_err, 0, 0}
 };
 
@@ -2601,6 +2620,32 @@ static int parse_strtoull(const char *buf,
 	return ret;
 }
 
+static ssize_t sec_fs_stat_show(struct ext4_attr *a,
+				struct ext4_sb_info *sbi, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "\"%s\":\"%llu\",\"%s\":\"%llu\",\"%s\":\"%u\",\"%s\":\"%llu\",\"%s\":\"%u\"\n",
+		"F_BLOCKS",
+		(unsigned long long)ext4_blocks_count(sbi->s_es),
+		"F_BFREE",
+		(unsigned long long)percpu_counter_sum_positive(
+						&sbi->s_freeclusters_counter) -
+		(unsigned long long)percpu_counter_sum_positive(
+						&sbi->s_dirtyclusters_counter),
+		"F_FILES",
+		(unsigned int)le32_to_cpu(sbi->s_es->s_inodes_count),
+		"F_FFREE",
+		(unsigned long long)percpu_counter_sum_positive(
+						&sbi->s_freeinodes_counter),
+		"FS_ERROR",
+		(unsigned int)le32_to_cpu(sbi->s_es->s_error_count));
+}
+
+static ssize_t sec_fs_freefrag_show(struct ext4_attr *a,
+				struct ext4_sb_info *sbi, char *buf)
+{
+	return ext4_mb_freefrag_show(sbi, buf);
+}
+
 static ssize_t delayed_allocation_blocks_show(struct ext4_attr *a,
 					      struct ext4_sb_info *sbi,
 					      char *buf)
@@ -2647,9 +2692,11 @@ static ssize_t r_blocks_count_store(struct ext4_attr *a,
 {
 	unsigned long long val;
 
-	if (parse_strtoull(buf, -1ULL, &val))
+	if (parse_strtoull(buf, -1ULL, &val) || ext4_r_blocks_count(sbi->s_es))
 		return -EINVAL;
 	atomic64_set(&sbi->s_r_blocks_count, val);
+	ext4_msg(sbi->s_sb, KERN_INFO, "Root reserved blocks %ld",
+			atomic64_read(&sbi->s_r_blocks_count));
 
 	return count;
 }
@@ -2791,6 +2838,8 @@ static struct ext4_attr ext4_attr_##_name = {			\
 	},							\
 }
 
+EXT4_RO_ATTR(sec_fs_stat);
+EXT4_RO_ATTR(sec_fs_freefrag);
 EXT4_RO_ATTR(delayed_allocation_blocks);
 EXT4_RO_ATTR(session_write_kbytes);
 EXT4_RO_ATTR(lifetime_write_kbytes);
@@ -2819,6 +2868,8 @@ EXT4_RO_ATTR_ES_UI(first_error_time, s_first_error_time);
 EXT4_RO_ATTR_ES_UI(last_error_time, s_last_error_time);
 
 static struct attribute *ext4_attrs[] = {
+	ATTR_LIST(sec_fs_stat),
+	ATTR_LIST(sec_fs_freefrag),
 	ATTR_LIST(delayed_allocation_blocks),
 	ATTR_LIST(session_write_kbytes),
 	ATTR_LIST(lifetime_write_kbytes),
@@ -4156,6 +4207,10 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 		goto failed_mount;
 	}
 
+	if (test_opt(sb, DEBUG_BDINFO))
+		ext4_msg(sb, KERN_INFO,
+				"Mount option debug_bdinfo is deprecated");
+
 	if (ext4_proc_root)
 		sbi->s_proc = proc_mkdir(sb->s_id, ext4_proc_root);
 
@@ -4359,7 +4414,18 @@ no_journal:
 
 	ext4_clamp_want_extra_isize(sb);
 
-	atomic64_set(&sbi->s_r_blocks_count, ext4_r_blocks_count(es));
+#define ANDROID_M_R_BLOCKS_COUNT	(1280)
+	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC)
+		atomic64_set(&sbi->s_r_blocks_count, ext4_r_blocks_count(es) ? :
+				ANDROID_M_R_BLOCKS_COUNT);
+	if (atomic64_read(&sbi->s_r_blocks_count))
+		ext4_msg(sb, KERN_INFO, "Root reserved blocks %ld",
+				atomic64_read(&sbi->s_r_blocks_count));
+
+	if (ext4_sec_r_blocks_count(es))
+		ext4_msg(sb, KERN_INFO, "SEC reserved blocks %llu",
+				ext4_sec_r_blocks_count(es) >>
+				sbi->s_cluster_bits);
 
 	err = ext4_reserve_clusters(sbi, ext4_calculate_resv_clusters(sb));
 	if (err) {
@@ -4432,6 +4498,14 @@ no_journal:
 			goto failed_mount8;
 	}
 #endif  /* CONFIG_QUOTA */
+
+	if (le32_to_cpu(sbi->s_es->s_sec_magic) == EXT4_SEC_DATA_MAGIC) {
+		err = sysfs_create_link(&ext4_kset->kobj, &sbi->s_kobj,
+			      "userdata");
+		if (err)
+			printk(KERN_ERR "Can not create sysfs link"
+					"for userdata(%d)", err);
+	}
 
 	EXT4_SB(sb)->s_mount_state |= EXT4_ORPHAN_FS;
 	ext4_orphan_cleanup(sb, es);
@@ -4567,6 +4641,9 @@ out_free_base:
 static void ext4_init_journal_params(struct super_block *sb, journal_t *journal)
 {
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
+#ifdef CONFIG_JOURNAL_DATA_TAG
+	struct hd_struct *part;
+#endif
 
 	journal->j_commit_interval = sbi->s_commit_interval;
 	journal->j_min_batch_time = sbi->s_min_batch_time;
@@ -4581,6 +4658,23 @@ static void ext4_init_journal_params(struct super_block *sb, journal_t *journal)
 		journal->j_flags |= JBD2_ABORT_ON_SYNCDATA_ERR;
 	else
 		journal->j_flags &= ~JBD2_ABORT_ON_SYNCDATA_ERR;
+
+#ifdef CONFIG_JOURNAL_DATA_TAG
+	part = sb->s_bdev->bd_part;
+	if (part->info && !strncmp(part->info->volname, "USERDATA", 8)) {
+		journal->j_flags |= JBD2_JOURNAL_TAG;
+		printk("Setting journal tag on volname[%s]\n", 
+			part->info->volname);
+	} else if (!part->info && journal->j_maxlen >= 32768) {
+		/* maybe dm device &&  journal size > 128MB */
+		journal->j_flags |= JBD2_JOURNAL_TAG;
+		printk("Setting journal tag on volname[(null)] "
+		       "journal size %u MB\n", journal->j_maxlen * 4 / 1024);
+	}
+	else
+		journal->j_flags &= ~JBD2_JOURNAL_TAG;
+#endif
+
 	write_unlock(&journal->j_state_lock);
 }
 
@@ -4845,6 +4939,14 @@ static int ext4_commit_super(struct super_block *sb, int sync)
 		clear_buffer_write_io_error(sbh);
 		set_buffer_uptodate(sbh);
 	}
+
+	if (unlikely(le16_to_cpu(es->s_magic) != EXT4_SUPER_MAGIC)) {
+		print_bh(sb, sbh, 0, EXT4_BLOCK_SIZE(sb));
+		if (test_opt(sb, ERRORS_PANIC))
+			panic("EXT4(Can not find EXT4_SUPER_MAGIC");
+		return -EIO;
+	}
+
 	/*
 	 * If the file system is mounted read-only, don't update the
 	 * superblock write time.  This avoids updating the superblock
@@ -4873,6 +4975,7 @@ static int ext4_commit_super(struct super_block *sb, int sync)
 		es->s_free_inodes_count =
 			cpu_to_le32(percpu_counter_sum_positive(
 				&EXT4_SB(sb)->s_freeinodes_counter));
+
 	BUFFER_TRACE(sbh, "marking dirty");
 	ext4_superblock_csum_set(sb);
 	mark_buffer_dirty(sbh);
@@ -5351,8 +5454,10 @@ static int ext4_statfs(struct dentry *dentry, struct kstatfs *buf)
 	/* prevent underflow in case that few free space is available */
 	buf->f_bfree = EXT4_C2B(sbi, max_t(s64, bfree, 0));
 	buf->f_bavail = buf->f_bfree -
-			(atomic64_read(&sbi->s_r_blocks_count) + resv_blocks);
-	if (buf->f_bfree < (atomic64_read(&sbi->s_r_blocks_count) + resv_blocks))
+			(atomic64_read(&sbi->s_r_blocks_count) + resv_blocks +
+			 ext4_sec_r_blocks_count(es));
+	if (buf->f_bfree < (atomic64_read(&sbi->s_r_blocks_count) +
+				resv_blocks + ext4_sec_r_blocks_count(es)))
 		buf->f_bavail = 0;
 	buf->f_files = le32_to_cpu(es->s_inodes_count);
 	buf->f_ffree = percpu_counter_sum_positive(&sbi->s_freeinodes_counter);

@@ -168,7 +168,7 @@ typedef __u64 __bitwise __addrpair;
  */
 struct sock_common {
 	/* skc_daddr and skc_rcv_saddr must be grouped on a 8 bytes aligned
-	 * address on 64bit arches : cf INET_MATCH() and INET_TW_MATCH()
+	 * address on 64bit arches : cf INET_MATCH()
 	 */
 	union {
 		__addrpair	skc_addrpair;
@@ -317,6 +317,12 @@ struct sock {
 #define sk_dontcopy_begin	__sk_common.skc_dontcopy_begin
 #define sk_dontcopy_end		__sk_common.skc_dontcopy_end
 #define sk_hash			__sk_common.skc_hash
+#define sk_portpair		__sk_common.skc_portpair
+#define sk_num			__sk_common.skc_num
+#define sk_dport		__sk_common.skc_dport
+#define sk_addrpair		__sk_common.skc_addrpair
+#define sk_daddr		__sk_common.skc_daddr
+#define sk_rcv_saddr		__sk_common.skc_rcv_saddr
 #define sk_family		__sk_common.skc_family
 #define sk_state		__sk_common.skc_state
 #define sk_reuse		__sk_common.skc_reuse
@@ -422,8 +428,13 @@ struct sock {
 	u32			sk_classid;
 	struct cgroup           *skcg;
 	struct cg_proto		*sk_cgrp;
-	uid_t			knox_uid;
-	pid_t			knox_pid;
+	/* START_OF_KNOX_VPN */
+	uid_t           knox_uid;
+	pid_t           knox_pid;
+	__be32          inet_src_masq;
+	char domain_name[255];
+	__u64   open_time;
+	/* END_OF_KNOX_VPN */
 	void			(*sk_state_change)(struct sock *sk);
 	void			(*sk_data_ready)(struct sock *sk);
 	void			(*sk_write_space)(struct sock *sk);
@@ -616,6 +627,12 @@ static inline void sk_add_node_rcu(struct sock *sk, struct hlist_head *list)
 	hlist_add_head_rcu(&sk->sk_node, list);
 }
 
+static inline void sk_add_node_tail_rcu(struct sock *sk, struct hlist_head *list)
+{
+	sock_hold(sk);
+	hlist_add_tail_rcu(&sk->sk_node, list);
+}
+
 static inline void __sk_nulls_add_node_rcu(struct sock *sk, struct hlist_nulls_head *list)
 {
 	hlist_nulls_add_head_rcu(&sk->sk_nulls_node, list);
@@ -700,6 +717,9 @@ enum sock_flags {
 		     */
 	SOCK_FILTER_LOCKED, /* Filter cannot be changed anymore */
 	SOCK_SELECT_ERR_QUEUE, /* Wake select on error queue */
+#ifdef CONFIG_MPTCP
+	SOCK_MPTCP, /* MPTCP set on this socket */
+#endif
 };
 
 #define SK_FLAGS_TIMESTAMP ((1UL << SOCK_TIMESTAMP) | (1UL << SOCK_TIMESTAMPING_RX_SOFTWARE))
@@ -902,6 +922,18 @@ extern void sk_clear_memalloc(struct sock *sk);
 
 extern int sk_wait_data(struct sock *sk, long *timeo);
 
+#ifdef CONFIG_MPTCP
+/* START - needed for MPTCP */
+struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority, int family);
+void sock_lock_init(struct sock *sk);
+
+extern struct lock_class_key af_callback_keys[AF_MAX];
+extern char *const af_family_clock_key_strings[AF_MAX+1];
+
+#define SK_FLAGS_TIMESTAMP ((1UL << SOCK_TIMESTAMP) | (1UL << SOCK_TIMESTAMPING_RX_SOFTWARE))
+/* END - needed for MPTCP */
+#endif
+
 struct request_sock_ops;
 struct timewait_sock_ops;
 struct inet_hashinfo;
@@ -972,6 +1004,9 @@ struct proto {
 						struct sk_buff *skb);
 
 	void		(*release_cb)(struct sock *sk);
+#ifdef CONFIG_MPTCP
+	void		(*mtu_reduced)(struct sock *sk);
+#endif
 
 	/* Keeping track of sk's, looking them up, and port selection methods. */
 	void			(*hash)(struct sock *sk);
@@ -1680,6 +1715,10 @@ static inline void sock_put(struct sock *sk)
 	if (atomic_dec_and_test(&sk->sk_refcnt))
 		sk_free(sk);
 }
+/* Generic version of sock_put(), dealing with all sockets
+ * (TCP_TIMEWAIT, ESTABLISHED...)
+ */
+void sock_gen_put(struct sock *sk);
 
 extern int sk_receive_skb(struct sock *sk, struct sk_buff *skb,
 			  const int nested);

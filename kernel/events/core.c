@@ -6966,7 +6966,7 @@ done:
 		err = -EINVAL;
 	else if (IS_ERR(pmu))
 		err = PTR_ERR(pmu);
-
+#if defined(CONFIG_BPF_SYSCALL) && defined(CONFIG_EVENT_TRACING)
 err_ns:
 	if (err) {
 		if (event->ns)
@@ -6998,8 +6998,9 @@ err_ns:
 						    event->cpu));
 		}
 	}
-
+#endif
 	return event;
+
 }
 
 static int perf_copy_attr(struct perf_event_attr __user *uattr,
@@ -7446,6 +7447,7 @@ SYSCALL_DEFINE5(perf_event_open,
 		 * the old lists, before installing it on new lists.
 		 */
 		synchronize_rcu();
+
 		perf_install_in_context(ctx, group_leader, group_leader->cpu);
 		get_ctx(ctx);
 		list_for_each_entry(sibling, &group_leader->sibling_list,

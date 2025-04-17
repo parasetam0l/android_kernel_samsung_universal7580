@@ -457,9 +457,8 @@ static void exit_mm(struct task_struct *tsk)
 {
 	struct mm_struct *mm = tsk->mm;
 	struct core_state *core_state;
-	int mm_released;
 
-	mm_release(tsk, mm);
+	exit_mm_release(tsk, mm);
 	if (!mm)
 		return;
 	sync_mm_rss(mm);
@@ -507,10 +506,8 @@ static void exit_mm(struct task_struct *tsk)
 	enter_lazy_tlb(mm, current);
 	task_unlock(tsk);
 	mm_update_next_owner(mm);
-
-	mm_released = mmput(mm);
-	if (mm_released)
-		set_tsk_thread_flag(tsk, TIF_MM_RELEASED);
+	mmput(mm);
+	clear_thread_flag(TIF_MEMDIE);
 }
 
 /*
@@ -748,23 +745,12 @@ void do_exit(long code)
 	 */
 	if (unlikely(tsk->flags & PF_EXITING)) {
 		pr_alert("Fixing recursive fault but reboot is needed!\n");
-		futex_exit_done(tsk);
+		futex_exit_recursive(tsk);
 		set_current_state(TASK_UNINTERRUPTIBLE);
 		schedule();
 	}
 
 	exit_signals(tsk);  /* sets PF_EXITING */
-
-	if (tsk->flags & PF_SU) {
-		su_exit();
-	}
-
-	/*
-	 * tsk->flags are checked in the futex code to protect against
-	 * an exiting task cleaning up the robust pi futexes.
-	 */
-	smp_mb();
-	raw_spin_unlock_wait(&tsk->pi_lock);
 
 	if (unlikely(in_atomic()))
 		pr_info("note: %s[%d] exited with preempt_count %d\n",
@@ -839,7 +825,6 @@ void do_exit(long code)
 	 * Make sure we are holding no locks:
 	 */
 	debug_check_no_locks_held();
-	futex_exit_done(tsk);
 
 	if (tsk->io_context)
 		exit_io_context(tsk);

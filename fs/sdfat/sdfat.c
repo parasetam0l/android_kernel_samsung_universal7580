@@ -432,14 +432,12 @@ static void __sdfat_truncate_pagecache(struct inode *inode,
 	truncate_pagecache(inode, newsize);
 }
 
-static int sdfat_d_hash(const struct dentry *dentry,
-		const struct inode *inode, struct qstr *qstr)
+static int sdfat_d_hash(const struct dentry *dentry, struct qstr *qstr)
 {
 	return __sdfat_d_hash(dentry, qstr);
 }
 
-static int sdfat_d_hashi(const struct dentry *dentry,
-		const struct inode *inode, struct qstr *qstr)
+static int sdfat_d_hashi(const struct dentry *dentry, struct qstr *qstr)
 {
 	return __sdfat_d_hashi(dentry, qstr);
 }
@@ -909,20 +907,6 @@ static void sdfat_writepage_end_io(struct bio *bio, int err)
 }
 #endif
 
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
-static int sdfat_cmp(const struct dentry *dentry,
-		unsigned int len, const char *str, const struct qstr *name)
-{
-	return __sdfat_cmp(dentry, len, str, name);
-}
-
-static int sdfat_cmpi(const struct dentry *dentry,
-		unsigned int len, const char *str, const struct qstr *name)
-{
-	return __sdfat_cmpi(dentry, len, str, name);
-}
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 static int sdfat_cmp(const struct dentry *parent, const struct dentry *dentry,
 		unsigned int len, const char *str, const struct qstr *name)
 {
@@ -934,22 +918,6 @@ static int sdfat_cmpi(const struct dentry *parent, const struct dentry *dentry,
 {
 	return __sdfat_cmpi(dentry, len, str, name);
 }
-#else
-static int sdfat_cmp(const struct dentry *parent, const struct inode *pinode,
-		const struct dentry *dentry, const struct inode *inode,
-		unsigned int len, const char *str, const struct qstr *name)
-{
-	return __sdfat_cmp(dentry, len, str, name);
-}
-
-static int sdfat_cmpi(const struct dentry *parent, const struct inode *pinode,
-		const struct dentry *dentry, const struct inode *inode,
-		unsigned int len, const char *str, const struct qstr *name)
-{
-	return __sdfat_cmpi(dentry, len, str, name);
-}
-#endif
-
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
 static ssize_t sdfat_direct_IO(struct kiocb *iocb, struct iov_iter *iter)

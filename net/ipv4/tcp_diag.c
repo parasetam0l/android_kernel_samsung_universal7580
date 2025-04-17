@@ -47,6 +47,7 @@ static int tcp_diag_dump_one(struct sk_buff *in_skb, const struct nlmsghdr *nlh,
 {
 	return inet_diag_dump_one_icsk(&tcp_hashinfo, in_skb, nlh, req);
 }
+
 #ifdef CONFIG_INET_DIAG_DESTROY
 static int tcp_diag_destroy(struct sk_buff *in_skb,
 			    struct inet_diag_req_v2 *req)

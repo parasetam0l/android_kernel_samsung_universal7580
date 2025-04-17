@@ -17,13 +17,13 @@ config MIPI_LLI_BOOT_SPI
 
 config EXYNOS_MIPI_LLI
 	bool "Enable Exynos MIPI LLI"
-	default y
+	default n
 	help
 	  Enable MIPI LLI via Shared Memory.
 
 config EXYNOS_MIPI_LLI_MPHY
 	bool "Enable Exynos MIPI LLI MPHY"
-	default y
+	default n
 	depends on EXYNOS_MIPI_LLI
 	help
 	  Enable M-PHY for MIPI-LLI

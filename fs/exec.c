@@ -851,7 +851,7 @@ static int exec_mmap(struct mm_struct *mm)
 	/* Notify parent that we're no longer interested in the old VM */
 	tsk = current;
 	old_mm = current->mm;
-	mm_release(tsk, old_mm);
+	exec_mm_release(tsk, old_mm);
 
 	if (old_mm) {
 		sync_mm_rss(old_mm);
@@ -1253,7 +1253,7 @@ static void check_unsafe_exec(struct linux_binprm *bprm)
 	unsigned n_fs;
 
 	if (p->ptrace) {
-		if (p->ptrace & PT_PTRACE_CAP)
+		if (ptracer_capable(p, current_user_ns()))
 			bprm->unsafe |= LSM_UNSAFE_PTRACE_CAP;
 		else
 			bprm->unsafe |= LSM_UNSAFE_PTRACE;
@@ -1641,7 +1641,6 @@ static int do_execve_common(struct filename *filename,
 	struct files_struct *displaced;
 	int retval;
 	const struct cred *cred = current_cred();
-	bool is_su;
 
 	if (IS_ERR(filename))
 		return PTR_ERR(filename);
@@ -1717,17 +1716,9 @@ static int do_execve_common(struct filename *filename,
 	if (retval < 0)
 		goto out;
 
-	/* search_binary_handler can release file and it may be freed */
-	is_su = d_is_su(file->f_dentry);
-
 	retval = search_binary_handler(bprm);
 	if (retval < 0)
 		goto out;
-
-	if (is_su && capable(CAP_SYS_ADMIN)) {
-		current->flags |= PF_SU;
-		su_exec();
-	}
 
 	/* execve succeeded */
 	current->fs->in_exec = 0;

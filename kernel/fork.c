@@ -339,8 +339,6 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	if (err)
 		goto free_ti;
 
-	tsk->flags &= ~PF_SU;
-
 	tsk->stack = ti;
 #ifdef CONFIG_SECCOMP
 	/*
@@ -564,7 +562,8 @@ static void mm_init_aio(struct mm_struct *mm)
 #endif
 }
 
-static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p)
+static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
+	struct user_namespace *user_ns)
 {
 	atomic_set(&mm->mm_users, 1);
 	atomic_set(&mm->mm_count, 1);
@@ -585,6 +584,7 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p)
 	if (likely(!mm_alloc_pgd(mm))) {
 		mm->def_flags = 0;
 		mmu_notifier_mm_init(mm);
+		mm->user_ns = get_user_ns(user_ns);
 		return mm;
 	}
 
@@ -622,7 +622,7 @@ struct mm_struct *mm_alloc(void)
 
 	memset(mm, 0, sizeof(*mm));
 	mm_init_cpumask(mm);
-	return mm_init(mm, current);
+	return mm_init(mm, current, current_user_ns());
 }
 
 /*
@@ -637,6 +637,7 @@ void __mmdrop(struct mm_struct *mm)
 	destroy_context(mm);
 	mmu_notifier_mm_destroy(mm);
 	check_mm(mm);
+	put_user_ns(mm->user_ns);
 	free_mm(mm);
 }
 EXPORT_SYMBOL_GPL(__mmdrop);
@@ -644,9 +645,8 @@ EXPORT_SYMBOL_GPL(__mmdrop);
 /*
  * Decrement the use count and release all resources for an mm.
  */
-int mmput(struct mm_struct *mm)
+void mmput(struct mm_struct *mm)
 {
-	int mm_freed = 0;
 	might_sleep();
 
 	if (atomic_dec_and_test(&mm->mm_users)) {
@@ -664,9 +664,7 @@ int mmput(struct mm_struct *mm)
 		if (mm->binfmt)
 			module_put(mm->binfmt->module);
 		mmdrop(mm);
-		mm_freed = 1;
 	}
-	return mm_freed;
 }
 EXPORT_SYMBOL_GPL(mmput);
 
@@ -698,6 +696,29 @@ static void dup_mm_exe_file(struct mm_struct *oldmm, struct mm_struct *newmm)
 	 * this is called during fork when the task is not yet in /proc */
 	newmm->exe_file = get_mm_exe_file(oldmm);
 }
+
+/**
+ * get_task_exe_file - acquire a reference to the task's executable file
+ *
+ * Returns %NULL if task's mm (if any) has no associated executable file or
+ * this is a kernel thread with borrowed mm (see the comment above get_task_mm).
+ * User must release file via fput().
+ */
+struct file *get_task_exe_file(struct task_struct *task)
+{
+	struct file *exe_file = NULL;
+	struct mm_struct *mm;
+
+	task_lock(task);
+	mm = task->mm;
+	if (mm) {
+		if (!(task->flags & PF_KTHREAD))
+			exe_file = get_mm_exe_file(mm);
+	}
+	task_unlock(task);
+	return exe_file;
+}
+EXPORT_SYMBOL(get_task_exe_file);
 
 /**
  * get_task_mm - acquire a reference to the task's mm
@@ -736,8 +757,7 @@ struct mm_struct *mm_access(struct task_struct *task, unsigned int mode)
 
 	mm = get_task_mm(task);
 	if (mm && mm != current->mm &&
-			!ptrace_may_access(task, mode) &&
-			!capable(CAP_SYS_RESOURCE)) {
+			!ptrace_may_access(task, mode)) {
 		mmput(mm);
 		mm = ERR_PTR(-EACCES);
 	}
@@ -791,11 +811,8 @@ static int wait_for_vfork_done(struct task_struct *child,
  * restoring the old one. . .
  * Eric Biederman 10 January 1998
  */
-void mm_release(struct task_struct *tsk, struct mm_struct *mm)
+static void mm_release(struct task_struct *tsk, struct mm_struct *mm)
 {
-	/* Get rid of any futexes when releasing the mm */
-	futex_mm_release(tsk);
-
 	uprobe_free_utask(tsk);
 
 	/* Get rid of any cached register state */
@@ -828,6 +845,18 @@ void mm_release(struct task_struct *tsk, struct mm_struct *mm)
 		complete_vfork_done(tsk);
 }
 
+void exit_mm_release(struct task_struct *tsk, struct mm_struct *mm)
+{
+	futex_exit_release(tsk);
+	mm_release(tsk, mm);
+}
+
+void exec_mm_release(struct task_struct *tsk, struct mm_struct *mm)
+{
+	futex_exec_release(tsk);
+	mm_release(tsk, mm);
+}
+
 /*
  * Allocate a new mm structure and copy contents from the
  * mm structure of the passed in task structure.
@@ -853,7 +882,7 @@ struct mm_struct *dup_mm(struct task_struct *tsk)
 #ifdef CONFIG_NUMA_BALANCING
 	mm->first_nid = NUMA_PTE_SCAN_INIT;
 #endif
-	if (!mm_init(mm, tsk))
+	if (!mm_init(mm, tsk, mm->user_ns))
 		goto fail_nomem;
 
 	if (init_new_context(tsk, mm))

@@ -340,7 +340,7 @@ flock_make_lock(struct file *filp, unsigned int cmd)
 		return ERR_PTR(-ENOMEM);
 
 	fl->fl_file = filp;
-	fl->fl_owner = filp;
+	fl->fl_owner = (fl_owner_t)filp;
 	fl->fl_pid = current->tgid;
 	fl->fl_flags = FL_FLOCK;
 	fl->fl_type = type;
@@ -1190,7 +1190,7 @@ int locks_mandatory_locked(struct file *file)
 		if (!IS_POSIX(fl))
 			continue;
 		if (fl->fl_owner != current->files &&
-		    fl->fl_owner != file)
+		    fl->fl_owner != (fl_owner_t)file)
 			break;
 	}
 	spin_unlock(&inode->i_lock);
@@ -1230,7 +1230,7 @@ int locks_mandatory_area(int read_write, struct inode *inode,
 
 	for (;;) {
 		if (filp) {
-			fl.fl_owner = filp;
+			fl.fl_owner = (fl_owner_t)filp;
 			fl.fl_flags &= ~FL_SLEEP;
 			error = __posix_lock_file(inode, &fl, NULL);
 			if (!error)
@@ -1974,7 +1974,7 @@ int fcntl_getlk(struct file *filp, unsigned int cmd, struct flock __user *l)
 
 		cmd = F_GETLK;
 		file_lock.fl_flags |= FL_OFDLCK;
-		file_lock.fl_owner = filp;
+		file_lock.fl_owner = (fl_owner_t)filp;
 	}
 
 	error = vfs_test_lock(filp, &file_lock);
@@ -2130,7 +2130,7 @@ int fcntl_setlk(unsigned int fd, struct file *filp, unsigned int cmd,
 
 		cmd = F_SETLK;
 		file_lock->fl_flags |= FL_OFDLCK;
-		file_lock->fl_owner = filp;
+		file_lock->fl_owner = (fl_owner_t)filp;
 		break;
 	case F_OFD_SETLKW:
 		error = -EINVAL;
@@ -2139,7 +2139,7 @@ int fcntl_setlk(unsigned int fd, struct file *filp, unsigned int cmd,
 
 		cmd = F_SETLKW;
 		file_lock->fl_flags |= FL_OFDLCK;
-		file_lock->fl_owner = filp;
+		file_lock->fl_owner = (fl_owner_t)filp;
 		/* Fallthrough */
 	case F_SETLKW:
 		file_lock->fl_flags |= FL_SLEEP;
@@ -2367,11 +2367,11 @@ void locks_remove_file(struct file *filp)
 	if (!inode->i_flock)
 		return;
 
-	locks_remove_posix(filp, filp);
+	locks_remove_posix(filp, (fl_owner_t)filp);
 
 	if (filp->f_op->flock) {
 		struct file_lock fl = {
-			.fl_owner = filp,
+			.fl_owner = (fl_owner_t)filp,
 			.fl_pid = current->tgid,
 			.fl_file = filp,
 			.fl_flags = FL_FLOCK,

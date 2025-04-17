@@ -37,7 +37,6 @@
  * and cause the driver to probe for all devices again.
  */
 ssize_t usb_store_new_id(struct usb_dynids *dynids,
-			 const struct usb_device_id *id_table,
 			 struct device_driver *driver,
 			 const char *buf, size_t count)
 {
@@ -45,12 +44,11 @@ ssize_t usb_store_new_id(struct usb_dynids *dynids,
 	u32 idVendor = 0;
 	u32 idProduct = 0;
 	unsigned int bInterfaceClass = 0;
-	u32 refVendor, refProduct;
 	int fields = 0;
 	int retval = 0;
 
-	fields = sscanf(buf, "%x %x %x %x %x", &idVendor, &idProduct,
-			&bInterfaceClass, &refVendor, &refProduct);
+	fields = sscanf(buf, "%x %x %x", &idVendor, &idProduct,
+					&bInterfaceClass);
 	if (fields < 2)
 		return -EINVAL;
 
@@ -65,16 +63,6 @@ ssize_t usb_store_new_id(struct usb_dynids *dynids,
 	if (fields == 3) {
 		dynid->id.bInterfaceClass = (u8)bInterfaceClass;
 		dynid->id.match_flags |= USB_DEVICE_ID_MATCH_INT_CLASS;
-	}
-
-	if (fields > 4) {
-		const struct usb_device_id *id = id_table;
-
-		for (; id->match_flags; id++)
-			if (id->idVendor == refVendor && id->idProduct == refProduct) {
-				dynid->id.driver_info = id->driver_info;
-				break;
-			}
 	}
 
 	spin_lock(&dynids->lock);
@@ -118,7 +106,7 @@ static ssize_t store_new_id(struct device_driver *driver,
 {
 	struct usb_driver *usb_drv = to_usb_driver(driver);
 
-	return usb_store_new_id(&usb_drv->dynids, usb_drv->id_table, driver, buf, count);
+	return usb_store_new_id(&usb_drv->dynids, driver, buf, count);
 }
 static DRIVER_ATTR(new_id, S_IRUGO | S_IWUSR, show_dynids, store_new_id);
 
@@ -438,6 +426,11 @@ static int usb_unbind_interface(struct device *dev)
 	if (driver->supports_autosuspend)
 		pm_runtime_disable(dev);
 	pm_runtime_set_suspended(dev);
+
+	/* Undo any residual pm_autopm_get_interface_* calls */
+	for (r = atomic_read(&intf->pm_usage_cnt); r > 0; --r)
+		usb_autopm_put_interface_no_suspend(intf);
+	atomic_set(&intf->pm_usage_cnt, 0);
 
 	if (!error)
 		usb_autosuspend_device(udev);
@@ -1557,6 +1550,7 @@ void usb_autopm_put_interface(struct usb_interface *intf)
 	int			status;
 
 	usb_mark_last_busy(udev);
+	atomic_dec(&intf->pm_usage_cnt);
 	status = pm_runtime_put_sync(&intf->dev);
 	dev_vdbg(&intf->dev, "%s: cnt %d -> %d\n",
 			__func__, atomic_read(&intf->dev.power.usage_count),
@@ -1585,6 +1579,7 @@ void usb_autopm_put_interface_async(struct usb_interface *intf)
 	int			status;
 
 	usb_mark_last_busy(udev);
+	atomic_dec(&intf->pm_usage_cnt);
 	status = pm_runtime_put(&intf->dev);
 	dev_vdbg(&intf->dev, "%s: cnt %d -> %d\n",
 			__func__, atomic_read(&intf->dev.power.usage_count),
@@ -1606,6 +1601,7 @@ void usb_autopm_put_interface_no_suspend(struct usb_interface *intf)
 	struct usb_device	*udev = interface_to_usbdev(intf);
 
 	usb_mark_last_busy(udev);
+	atomic_dec(&intf->pm_usage_cnt);
 	pm_runtime_put_noidle(&intf->dev);
 }
 EXPORT_SYMBOL_GPL(usb_autopm_put_interface_no_suspend);
@@ -1634,6 +1630,8 @@ int usb_autopm_get_interface(struct usb_interface *intf)
 	status = pm_runtime_get_sync(&intf->dev);
 	if (status < 0)
 		pm_runtime_put_sync(&intf->dev);
+	else
+		atomic_inc(&intf->pm_usage_cnt);
 	dev_vdbg(&intf->dev, "%s: cnt %d -> %d\n",
 			__func__, atomic_read(&intf->dev.power.usage_count),
 			status);
@@ -1665,6 +1663,8 @@ int usb_autopm_get_interface_async(struct usb_interface *intf)
 	status = pm_runtime_get(&intf->dev);
 	if (status < 0 && status != -EINPROGRESS)
 		pm_runtime_put_noidle(&intf->dev);
+	else
+		atomic_inc(&intf->pm_usage_cnt);
 	dev_vdbg(&intf->dev, "%s: cnt %d -> %d\n",
 			__func__, atomic_read(&intf->dev.power.usage_count),
 			status);
@@ -1688,6 +1688,7 @@ void usb_autopm_get_interface_no_resume(struct usb_interface *intf)
 	struct usb_device	*udev = interface_to_usbdev(intf);
 
 	usb_mark_last_busy(udev);
+	atomic_inc(&intf->pm_usage_cnt);
 	pm_runtime_get_noresume(&intf->dev);
 }
 EXPORT_SYMBOL_GPL(usb_autopm_get_interface_no_resume);

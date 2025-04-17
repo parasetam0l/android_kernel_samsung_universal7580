@@ -238,10 +238,8 @@ void ext4_release_system_zone(struct super_block *sb)
 int ext4_data_block_valid(struct ext4_sb_info *sbi, ext4_fsblk_t start_blk,
 			  unsigned int count)
 {
-#ifndef VERIFY_META_ONLY
 	struct ext4_system_zone *entry;
 	struct rb_node *n = sbi->system_blks.rb_node;
-#endif
 
 	if ((start_blk <= le32_to_cpu(sbi->s_es->s_first_data_block)) ||
 	    (start_blk + count < start_blk) ||
@@ -249,7 +247,6 @@ int ext4_data_block_valid(struct ext4_sb_info *sbi, ext4_fsblk_t start_blk,
 		sbi->s_es->s_last_error_block = cpu_to_le64(start_blk);
 		return 0;
 	}
-#ifndef VERIFY_META_ONLY
 	while (n) {
 		entry = rb_entry(n, struct ext4_system_zone, node);
 		if (start_blk + count - 1 < entry->start_blk)
@@ -261,7 +258,6 @@ int ext4_data_block_valid(struct ext4_sb_info *sbi, ext4_fsblk_t start_blk,
 			return 0;
 		}
 	}
-#endif
 	return 1;
 }
 

@@ -111,10 +111,10 @@ static inline int task_dumpable(struct task_struct *task)
 	return 0;
 }
 
-static inline unsigned name_to_int(struct dentry *dentry)
+static inline unsigned name_to_int(const struct qstr *qstr)
 {
-	const char *name = dentry->d_name.name;
-	int len = dentry->d_name.len;
+	const char *name = qstr->name;
+	int len = qstr->len;
 	unsigned n = 0;
 
 	if (len > 1 && *name == '0')
@@ -281,6 +281,8 @@ struct proc_maps_private {
 	struct mempolicy *task_mempolicy;
 #endif
 };
+
+struct mm_struct *proc_mem_open(struct inode *inode, unsigned int mode);
 
 extern const struct file_operations proc_pid_maps_operations;
 extern const struct file_operations proc_tid_maps_operations;

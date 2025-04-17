@@ -357,11 +357,13 @@ static bool rt6_check_expired(const struct rt6_info *rt)
 	return false;
 }
 
+#ifndef CONFIG_MPTCP
 static bool rt6_need_strict(const struct in6_addr *daddr)
 {
 	return ipv6_addr_type(daddr) &
 		(IPV6_ADDR_MULTICAST | IPV6_ADDR_LINKLOCAL | IPV6_ADDR_LOOPBACK);
 }
+#endif
 
 /* Multipath route selection:
  *   Hash based function using packet header and flowlabel.
@@ -1173,7 +1175,7 @@ void ip6_sk_update_pmtu(struct sk_buff *skb, struct sock *sk, __be32 mtu)
 EXPORT_SYMBOL_GPL(ip6_sk_update_pmtu);
 
 void ip6_redirect(struct sk_buff *skb, struct net *net, int oif, u32 mark,
-		  kuid_t uid)
+					kuid_t uid)
 {
 	const struct ipv6hdr *iph = (struct ipv6hdr *) skb->data;
 	struct dst_entry *dst;
@@ -1198,7 +1200,7 @@ EXPORT_SYMBOL_GPL(ip6_redirect);
 void ip6_sk_redirect(struct sk_buff *skb, struct sock *sk)
 {
 	ip6_redirect(skb, sock_net(sk), sk->sk_bound_dev_if, sk->sk_mark,
-		     sk->sk_uid);
+					sk->sk_uid);
 }
 EXPORT_SYMBOL_GPL(ip6_sk_redirect);
 

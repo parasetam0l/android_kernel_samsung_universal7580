@@ -23,6 +23,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/init.h>
 #include <linux/ioctl.h>
 #include <linux/tty.h>
 #include <linux/slab.h>
@@ -70,7 +71,7 @@ struct ark3116_private {
 	__u32			lcr;	/* line control register value */
 	__u32			hcr;	/* handshake control register (0x8)
 					 * value */
-	__u32			mcr;	/* modem control register value */
+	__u32			mcr;	/* modem contol register value */
 
 	/* protects the status values below */
 	spinlock_t		status_lock;
@@ -373,29 +374,23 @@ static int ark3116_open(struct tty_struct *tty, struct usb_serial_port *port)
 		dev_dbg(&port->dev,
 			"%s - usb_serial_generic_open failed: %d\n",
 			__func__, result);
-		goto err_free;
+		goto err_out;
 	}
 
 	/* remove any data still left: also clears error state */
 	ark3116_read_reg(serial, UART_RX, buf);
 
 	/* read modem status */
-	result = ark3116_read_reg(serial, UART_MSR, buf);
-	if (result < 0)
-		goto err_close;
-	priv->msr = *buf;
-
+	priv->msr = ark3116_read_reg(serial, UART_MSR, buf);
 	/* read line status */
-	result = ark3116_read_reg(serial, UART_LSR, buf);
-	if (result < 0)
-		goto err_close;
-	priv->lsr = *buf;
+	priv->lsr = ark3116_read_reg(serial, UART_LSR, buf);
 
 	result = usb_submit_urb(port->interrupt_in_urb, GFP_KERNEL);
 	if (result) {
 		dev_err(&port->dev, "submit irq_in urb failed %d\n",
 			result);
-		goto err_close;
+		ark3116_close(port);
+		goto err_out;
 	}
 
 	/* activate interrupts */
@@ -408,15 +403,8 @@ static int ark3116_open(struct tty_struct *tty, struct usb_serial_port *port)
 	if (tty)
 		ark3116_set_termios(tty, port, NULL);
 
+err_out:
 	kfree(buf);
-
-	return 0;
-
-err_close:
-	usb_serial_generic_close(port);
-err_free:
-	kfree(buf);
-
 	return result;
 }
 
@@ -432,8 +420,8 @@ static int ark3116_ioctl(struct tty_struct *tty,
 		/* XXX: Some of these values are probably wrong. */
 		memset(&serstruct, 0, sizeof(serstruct));
 		serstruct.type = PORT_16654;
-		serstruct.line = port->minor;
-		serstruct.port = port->port_number;
+		serstruct.line = port->serial->minor;
+		serstruct.port = port->number;
 		serstruct.custom_divisor = 0;
 		serstruct.baud_base = 460800;
 
@@ -628,7 +616,7 @@ static void ark3116_read_int_callback(struct urb *urb)
 }
 
 
-/* Data comes in via the bulk (data) URB, errors/interrupts via the int URB.
+/* Data comes in via the bulk (data) URB, erors/interrupts via the int URB.
  * This means that we cannot be sure which data byte has an associated error
  * condition, so we report an error for all data in the next bulk read.
  *
